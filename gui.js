@@ -1123,10 +1123,11 @@ server.listen(GUI_PORT, GUI_HOST, async () => {
 // ---------------------------------------------------------------------------
 
 function openBrowser(url) {
-  const tries = [
-    ["cmd", ["/c", "start", "", url]],
-    ["rundll32", ["url.dll,FileProtocolHandler", url]],
-  ];
+  const tries = process.platform === "win32"
+    ? [["cmd", ["/c", "start", "", url]], ["rundll32", ["url.dll,FileProtocolHandler", url]]]
+    : process.platform === "darwin"
+      ? [["open", [url]]]
+      : [["xdg-open", [url]]];
   for (const [cmd, a] of tries) {
     try {
       const p = spawn(cmd, a, { detached: true, stdio: "ignore", windowsHide: true });
