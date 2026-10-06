@@ -396,6 +396,7 @@
       <!-- ---------- 费用试算 ---------- -->
       <section id="s-calc">
         <div class="note">用 <code>goat-prices.json</code> 的官方牌价即时估算。</div>
+        <div id="calcWarn"></div>
         <div class="card">
           <div class="field" style="margin-bottom:18px">
             <label>模型</label>
@@ -544,6 +545,7 @@ function go(t) {
   if (t === "official") loadOfficial(false);
   if (t === "settings") loadSettings();
   if (t === "raw") loadRaw();
+  if (t === "calc") refreshCalcModels();
 }
 
 document.querySelectorAll("nav button").forEach((b) => b.onclick = () => go(b.dataset.t));
@@ -931,6 +933,47 @@ async function loadChildLog() {
 }
 
 /* ---------- 试算 ---------- */
+/**
+ * 填充「模型」下拉。
+ * 优先用 goat-prices.json 的牌价（有价格才能算钱）；
+ * 缺这个文件时退回上游模型列表当占位，并给出生成指引 —— 避免出现"空的静默下拉"。
+ */
+function renderCalcModels() {
+  const priced = (MODELS && MODELS.prices) || [];
+  const up = (MODELS && MODELS.upstream) || [];
+  const sel = $("calcModel");
+
+  if (priced.length) {
+    sel.innerHTML = priced.map((m) =>
+      `<option value="${esc(m.id)}" ${m.id === "deepseek/deepseek-v4.1-flash" ? "selected" : ""}>${esc(m.name)} — ${esc(m.id)}</option>`).join("");
+    $("calcWarn").innerHTML = "";
+    return;
+  }
+
+  if (up.length) {
+    sel.innerHTML = up.map((m) => {
+      const id = typeof m === "string" ? m : m.id;
+      const name = typeof m === "string" ? m : (m.name || m.id);
+      return `<option value="${esc(id)}">${esc(name)} — ${esc(id)}</option>`;
+    }).join("");
+  } else {
+    sel.innerHTML = `<option value="">（暂无模型）</option>`;
+  }
+
+  $("calcWarn").innerHTML = `<div class="note err" style="margin-bottom:16px">
+    <b>找不到 goat-prices.json，费用试算拿不到价格。</b>
+    在控制台所在目录执行一次 <code>node goat-prices.js</code> 生成它（若需代理，见 README），
+    然后<b>刷新本页</b>即可 —— 不必重启控制台。
+    <br />下面的模型列表暂时取自上游目录，可以选，但估不出金额。</div>`;
+}
+
+/** 重新拉一次模型目录再渲染 —— 用户可能是刚生成 goat-prices.json 才切过来 */
+async function refreshCalcModels() {
+  const d = await api("/api/models");
+  if (!d.error) MODELS = d;
+  renderCalcModels();
+}
+
 async function doCalc() {
   const r = await api("/api/cost", {
     method: "POST",
@@ -1089,12 +1132,11 @@ async function refreshAll() {
   await loadStatus();
   if (API_DEAD) return;
   await loadConfig();
-  $("calcModel").innerHTML = ((MODELS && MODELS.prices) || []).map((m) =>
-    `<option value="${esc(m.id)}" ${m.id === "deepseek/deepseek-v4.1-flash" ? "selected" : ""}>${esc(m.name)} — ${esc(m.id)}</option>`).join("");
   await loadUsage();
   await loadChildLog();
   await loadSettings();
   await loadOfficial(false);
+  renderCalcModels();
   setInterval(loadStatus, 8000);
   setInterval(loadChildLog, 4000);
   startOfficialTimer();
