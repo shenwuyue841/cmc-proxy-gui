@@ -91,7 +91,7 @@ node goat-prices.js
 
 该步骤生成 `goat-prices.json`，费用统计与费用试算依赖此文件。未执行时控制台仍可正常运行，但费用相关字段为空。
 
-> 若本机需经由代理访问外网，执行前设置 `HTTP_PROXY` 与 `HTTPS_PROXY`，并加上 `NODE_USE_ENV_PROXY=1`（Node 的 `fetch` 默认不读取前两个变量）。控制台自身已内置该处理，此步骤是因为脚本在控制台之外手动执行。
+> 若本机需经由代理访问外网，执行前设置 `HTTP_PROXY` 与 `HTTPS_PROXY`，并加上 `NODE_USE_ENV_PROXY=1`（Node 的 `fetch` 默认不读取前两个变量）。控制台自身会处理这一点，此处是因为脚本在控制台之外单独执行。
 
 **3. 启动**
 
@@ -152,11 +152,15 @@ cmc-proxy-gui/
 }
 ```
 
-其中 `proxy` 为访问官方接口所需的出网代理，留空表示直连。Node 的 `fetch` 默认不读取 `HTTP_PROXY` 环境变量，控制台会在首次请求前注入 `NODE_USE_ENV_PROXY=1` 与 `HTTPS_PROXY`。
+其中 `proxy` 为访问官方接口所需的出网代理，留空表示直连。
+
+Node 在进程启动时即决定是否启用环境变量代理（`NODE_USE_ENV_PROXY` / `HTTPS_PROXY`），
+启动之后再设置无效。因此控制台在启动阶段会比对 `gui.config.json` 中的代理与当前环境，
+若不一致则**携带该代理重新执行自身一次**，从而保证无论从哪个入口启动都能正确出网。
 
 上游的 `port`、`upstream`、`apiKey`、`modelMap` 等配置仍位于 `config.json`，控制台仅代为修改。
 
-> 修改端口或代理后需重启控制台方可生效。原因是 Node 的 `fetch` 在首次请求时即固定全局 dispatcher，此后修改环境变量不再起作用。
+> 修改端口或出网代理后需重启控制台方可生效。若未重启就点击测试，界面会明确提示这一点，而不会反复失败。
 
 ---
 

@@ -74,33 +74,61 @@ ensureGuiConfig();
 const GUI_CFG = readGuiConfig();
 
 // ---------------------------------------------------------------------------
-// 出网代理自配置
-// Node 的 fetch(undici) 默认不读 HTTP_PROXY/HTTPS_PROXY，必须靠 NODE_USE_ENV_PROXY=1 打开。
-// undici 是**懒加载**的 —— 只要在第一次 fetch 之前把变量设好就有效，
-// 所以即使不用 start-gui.bat 启动、直接 `node gui.js` 也能出网。
+// 出网代理
 //
-// ⚠️ 一旦发生过第一次 fetch，undici 就建好了全局 dispatcher，之后再改变量不生效。
-//    「设置」页里改代理会提示需要重启控制台，原因就在这。
+// ⚠️ 实测结论（Node 22，用「必定连不上」的假代理验证过）：
+//    NODE_USE_ENV_PROXY / HTTPS_PROXY 必须在 **Node 进程启动之前** 就存在于环境变量里。
+//    在脚本内部设置 —— 哪怕放在模块最顶层、哪怕还没发生过任何 fetch —— **一律无效**，
+//    undici 在进程引导阶段就决定了要不要建 EnvHttpProxyAgent。
+//    （验证方式：shell 传入假代理 → 16ms 就 ECONNREFUSED；脚本内设置 → 完全走直连、超时）
+//
+//    所以这里用「自我重启」：发现 gui.config.json 里的代理还没进环境，就带着它
+//    重新 exec 一遍自己。用户从任何入口启动（bat / 直接 node / 双击）都能生效。
 // ---------------------------------------------------------------------------
+const CONFIGURED_PROXY = String(GUI_CFG.proxy || "").trim();
 const PROXY_URL =
   process.env.CMC_PROXY ||
   argVal("--proxy", null) ||
-  GUI_CFG.proxy ||
+  CONFIGURED_PROXY ||
   "";
 
-if (PROXY_URL && PROXY_URL !== "none") {
-  if (!process.env.NODE_USE_ENV_PROXY) process.env.NODE_USE_ENV_PROXY = "1";
-  if (!process.env.HTTPS_PROXY && !process.env.https_proxy) {
-    process.env.HTTPS_PROXY = PROXY_URL;
-    process.env.HTTP_PROXY = PROXY_URL;
-  }
-  if (!process.env.NO_PROXY && !process.env.no_proxy) {
-    process.env.NO_PROXY = "localhost,127.0.0.1,::1";
-  }
+/** 本进程启动时环境里的出网代理（空 = 直连） */
+function envProxy() {
+  return String(process.env.HTTPS_PROXY || process.env.https_proxy || "").trim();
+}
+
+// 配置里的代理还没进环境 → 带着它重启一次自己。
+// 重启后子进程的环境里就有 HTTPS_PROXY 了，条件不成立，不会递归。
+if (PROXY_URL && PROXY_URL !== "none" && envProxy() !== PROXY_URL) {
+  const env = {
+    ...process.env,
+    NODE_USE_ENV_PROXY: "1",
+    HTTPS_PROXY: PROXY_URL,
+    HTTP_PROXY: PROXY_URL,
+    NO_PROXY: process.env.NO_PROXY || process.env.no_proxy || "localhost,127.0.0.1,::1",
+  };
+  const r = spawnSync(process.execPath, process.argv.slice(1), { env, stdio: "inherit" });
+  process.exit(r.status == null ? 0 : r.status);
 }
 
 const GUI_PORT = parseInt(argVal("--port", String(GUI_CFG.port)), 10);
 const GUI_HOST = "127.0.0.1";
+
+/** 当前配置里的代理（给提示文案用） */
+function currentProxyLabel() {
+  const p = (readGuiConfig().proxy || "").trim();
+  return p && p !== "none" ? p : "未设置（直连）";
+}
+
+/** 配置里的代理与本次进程实际生效的不一致 → 只能重启 */
+function proxyRestartHint() {
+  const want = (readGuiConfig().proxy || "").trim();
+  if ((want || "") !== envProxy()) {
+    return " ⚠️ 出网代理在设置里改过了，需要重启控制台才会生效 —— 请关掉本窗口重新启动后再试。";
+  }
+  return "";
+}
+
 /** --auto-start: 控制台启动时若代理端口空闲，就顺手把它拉起来（一步到位） */
 const AUTO_START = args.includes("--auto-start");
 /** --open: 启动后自动打开默认浏览器（由 launcher 传入） */
@@ -476,8 +504,8 @@ const OFFICIAL_FAIL_TTL = 8e3;  // 失败只短暂记住 —— 否则一次网�
 let officialCache = { at: 0, data: null };
 
 async function getOfficial(force) {
-  if (!GUI_CFG.officialApi) {
-    return { ok: false, disabled: true, error: "官方额度查询已在「设置」页关闭。", proxy: PROXY_URL || null };
+  if (!readGuiConfig().officialApi) {
+    return { ok: false, disabled: true, error: "官方额度查询已在「设置」页关闭。", proxy: currentProxyLabel() };
   }
   if (!force && officialCache.data) {
     const ttl = officialCache.data.ok ? OFFICIAL_TTL : OFFICIAL_FAIL_TTL;
@@ -589,18 +617,19 @@ async function getOfficial(force) {
   } catch (e) {
     let msg;
     if (e.name === "AbortError") {
-      msg = `请求官方接口超时（20s）。检查 v2rayN 是否在跑、代理端口是否为 ${PROXY_URL}`;
+      msg = `请求官方接口超时（20s）。检查 v2rayN 是否在跑、代理端口是否为 ${currentProxyLabel()}`;
     } else if (e.httpStatus) {
       msg = e.message;
       if (e.httpStatus === 401 || e.httpStatus === 403) {
-        msg += "　（Key 无效或套餐不支持 API，请确认 config.json 里是 user_ 开头的 GOAT Key）";
+        msg += "　（Key 无效或套餐不支持 API，请确认「设置」里是 user_ 开头的 GOAT Key）";
       }
     } else {
       const code = (e.cause && (e.cause.code || e.cause.message)) || e.code || "";
-      msg = `网络请求失败：${e.message}${code ? " / " + code : ""}
-        。若本机需要代理才能出网，请到「设置」页填出网代理（当前：${PROXY_URL || "未设置（直连）"}）。`;
+      msg = `网络请求失败：${e.message}${code ? " / " + code : ""}`
+        + `。若本机需要代理才能出网，请到「设置」页填出网代理（当前：${currentProxyLabel()}）。`;
     }
-    const data = { ok: false, error: msg, base: OFFICIAL_BASE, proxy: PROXY_URL, fetchedAt: new Date().toISOString() };
+    msg += proxyRestartHint();
+    const data = { ok: false, error: msg, base: OFFICIAL_BASE, proxy: currentProxyLabel(), fetchedAt: new Date().toISOString() };
     officialCache = { at: Date.now(), data };
     return data;
   }
@@ -894,12 +923,10 @@ async function handleApi(req, res, url) {
       });
     } catch (e) {
       const code = (e.cause && (e.cause.code || e.cause.message)) || "";
-      return send(res, 200, {
-        ok: false,
-        message: e.name === "AbortError"
-          ? "超时（20s）。检查网络，或到「设置」页配一个出网代理。"
-          : `连不上：${e.message}${code ? " / " + code : ""}`,
-      });
+      const msg = e.name === "AbortError"
+        ? `超时（20s）。检查网络，或到「设置」页配出网代理（当前：${currentProxyLabel()}）。`
+        : `连不上：${e.message}${code ? " / " + code : ""}。当前出网代理：${currentProxyLabel()}。`;
+      return send(res, 200, { ok: false, message: msg + proxyRestartHint() });
     } finally {
       clearTimeout(timer);
     }
