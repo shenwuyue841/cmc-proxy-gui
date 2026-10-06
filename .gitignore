@@ -1,0 +1,21 @@
+# ---- 本控制台自己的配置与产物 ----
+gui.config.json
+backups/
+
+# ---- 如果你把 cmc-proxy 的文件也放在这个目录里，这些同样不该提交 ----
+config.json
+proxy.log
+fulllog*.log
+*.jsonl
+logs/
+goat-prices.json
+# 上游 cmc-proxy 的代理本体（别人写的，不要混进本仓库）
+proxy.js
+proxy.config.json
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

@@ -1,0 +1,1104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>cmc 控制台</title>
+<style>
+  :root{
+    --bg:#131519; --side:#171a20; --panel:#1c2027; --panel2:#23272f; --line:#2c313b;
+    --tx:#e8eaee; --tx2:#a2aab8; --tx3:#727b89;
+    --acc:#1D9E75; --acc2:#5DCAA5; --blue:#3d8be0; --amber:#EF9F27; --red:#e5544f;
+    --mono:ui-monospace,"JetBrains Mono",Consolas,monospace;
+    --r:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--tx);font-size:14.5px;line-height:1.65;
+       font-family:-apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+       -webkit-font-smoothing:antialiased}
+  code{font-family:var(--mono);font-size:.92em;background:var(--panel2);padding:1px 5px;border-radius:5px}
+  a{color:var(--acc2)}
+
+  /* ---------- 布局 ---------- */
+  .app{display:flex;min-height:100vh}
+  .side{width:216px;flex:none;background:var(--side);border-right:1px solid var(--line);
+        position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:20px 14px}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+
+  /* ---------- 侧边栏 ---------- */
+  .brand{display:flex;align-items:center;gap:10px;padding:0 8px 18px;border-bottom:1px solid var(--line)}
+  .brand .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(140deg,var(--acc),#12795a);
+        display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#fff;flex:none}
+  .brand b{font-size:17px;font-weight:600;letter-spacing:.2px}
+  .brand small{display:block;font-size:11.5px;color:var(--tx3);font-weight:400;line-height:1.2}
+
+  nav{display:flex;flex-direction:column;gap:3px;margin-top:16px;flex:1}
+  nav button{display:flex;align-items:center;gap:11px;background:transparent;border:0;color:var(--tx2);
+        font-size:15px;font-family:inherit;padding:11px 12px;border-radius:10px;cursor:pointer;
+        text-align:left;position:relative;transition:background .12s,color .12s}
+  nav button svg{width:17px;height:17px;flex:none;stroke:currentColor;fill:none;stroke-width:1.7;
+        stroke-linecap:round;stroke-linejoin:round}
+  nav button:hover{background:var(--panel);color:var(--tx)}
+  nav button.act{background:var(--panel);color:var(--tx);font-weight:500}
+  nav button.act::before{content:"";position:absolute;left:-14px;top:9px;bottom:9px;width:3px;
+        border-radius:0 3px 3px 0;background:var(--acc)}
+  nav button.act svg{stroke:var(--acc2)}
+
+  .side-foot{border-top:1px solid var(--line);padding-top:14px;margin-top:12px}
+  .stat{display:flex;align-items:center;gap:9px;padding:9px 10px;background:var(--panel);border-radius:10px}
+  .stat .txt{min-width:0}
+  .stat .t1{font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stat .t2{font-size:11.5px;color:var(--tx3);font-family:var(--mono)}
+
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--tx3);flex:none}
+  .dot.on{background:var(--acc);box-shadow:0 0 0 4px rgba(29,158,117,.16)}
+  .dot.off{background:var(--red);box-shadow:0 0 0 4px rgba(229,84,79,.14)}
+
+  /* ---------- 顶栏 ---------- */
+  .topbar{display:flex;align-items:center;gap:14px;padding:20px 28px 0}
+  .topbar h1{font-size:21px;font-weight:600;margin:0;letter-spacing:.2px}
+  .topbar .sub{font-size:13px;color:var(--tx3);margin-top:1px}
+  .spacer{flex:1}
+  .content{padding:20px 28px 70px;flex:1}
+
+  /* ---------- 通用 ---------- */
+  h2{font-size:16.5px;font-weight:600;margin:30px 0 12px;display:flex;align-items:center;gap:9px}
+  h2:first-child{margin-top:6px}
+  h2 .rule{flex:1;height:1px;background:var(--line)}
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+  .card.flat{padding:0;overflow:hidden}
+  .card h3{margin:0 0 8px;font-size:13px;font-weight:500;color:var(--tx2);letter-spacing:.3px}
+  .big{font-size:30px;font-weight:600;letter-spacing:-.6px;line-height:1.25}
+  .big.sm{font-size:22px}
+  .sub{font-size:12.5px;color:var(--tx3);margin-top:3px}
+  .muted{color:var(--tx3);font-size:13px}
+
+  section{display:none}
+  section.act{display:block}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--tx2);font-weight:500;background:var(--panel2);font-size:13px;position:sticky;top:0}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover td{background:rgba(255,255,255,.025)}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .mono{font-family:var(--mono);font-size:12.8px}
+  .scroll{overflow-x:auto}
+
+  input,select,textarea{background:var(--panel2);border:1px solid var(--line);color:var(--tx);
+        border-radius:10px;padding:9px 12px;font-size:14px;font-family:inherit;width:100%}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
+  select{cursor:pointer}
+
+  button.b{background:var(--acc);border:0;color:#fff;padding:10px 20px;border-radius:10px;
+        cursor:pointer;font-size:14px;font-family:inherit;font-weight:500}
+  button.b:hover{filter:brightness(1.1)}
+  button.b:disabled{opacity:.4;cursor:not-allowed;filter:none}
+  button.g{background:var(--panel2);border:1px solid var(--line);color:var(--tx);
+        padding:10px 20px;border-radius:10px;cursor:pointer;font-size:14px;font-family:inherit}
+  button.g:hover{border-color:var(--tx3)}
+  button.d{background:transparent;border:1px solid #63332f;color:#f09595;
+        padding:10px 20px;border-radius:10px;cursor:pointer;font-size:14px;font-family:inherit}
+  button.d:hover{background:rgba(229,84,79,.08)}
+  button.d:disabled{opacity:.4;cursor:not-allowed}
+  button.sm{padding:6px 13px;font-size:13px;border-radius:8px}
+
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .pill{display:inline-block;padding:2px 9px;border-radius:6px;font-size:12.5px;background:var(--panel2);color:var(--tx2)}
+  .pill.ok{background:rgba(29,158,117,.16);color:var(--acc2)}
+  .pill.err{background:rgba(229,84,79,.16);color:#f09595}
+  .note{background:var(--panel2);border-left:3px solid var(--amber);padding:12px 16px;
+        border-radius:0 10px 10px 0;color:var(--tx2);font-size:13.5px;margin:12px 0}
+  .note.ok{border-left-color:var(--acc)}
+  .note.err{border-left-color:var(--red)}
+  .note b{color:var(--tx)}
+
+  pre{background:#0e1013;border:1px solid var(--line);border-radius:12px;padding:14px;
+      max-height:420px;overflow:auto;font-family:var(--mono);font-size:12.8px;color:var(--tx2);margin:0;line-height:1.6}
+
+  .bars{display:flex;align-items:flex-end;gap:5px;height:130px;padding-bottom:22px;position:relative}
+  .bars .bar{flex:1;background:linear-gradient(180deg,var(--acc2),var(--acc));border-radius:4px 4px 0 0;
+        min-height:3px;position:relative;transition:filter .12s}
+  .bars .bar:hover{filter:brightness(1.25)}
+  .bars .bar span{position:absolute;bottom:-21px;left:0;right:0;text-align:center;
+        font-size:11.5px;color:var(--tx3)}
+
+  #toast{position:fixed;right:24px;bottom:24px;display:flex;flex-direction:column;gap:10px;z-index:20}
+  #toast div{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--acc);
+        padding:12px 18px;border-radius:0 10px 10px 0;font-size:13.5px;max-width:440px;
+        box-shadow:0 8px 24px rgba(0,0,0,.4)}
+  #toast div.err{border-left-color:var(--red)}
+
+  .kv{display:grid;grid-template-columns:132px 1fr;gap:10px 16px;align-items:center}
+  .kv .k{color:var(--tx2);font-size:13.5px}
+  .field>label{display:block;font-size:13px;color:var(--tx2);margin-bottom:6px}
+
+  /* ---------- 官方额度：限额表 ---------- */
+  .meter{height:14px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+        overflow:hidden;margin:14px 0 11px}
+  .meter .fill{height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--acc2));
+        border-radius:8px;transition:width .45s ease}
+  .meter.warn .fill{background:linear-gradient(90deg,#c47f18,var(--amber))}
+  .meter.danger .fill{background:linear-gradient(90deg,#b83f3b,var(--red))}
+  .mrow{display:flex;align-items:baseline;gap:9px}
+  .mrow .mused{font-size:23px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+  .mrow .mcap{color:var(--tx3);font-size:13px;font-variant-numeric:tabular-nums}
+  .mrow .mpct{margin-left:auto;font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+  .mrow .mpct.warn{color:var(--amber)}
+  .mrow .mpct.danger{color:var(--red)}
+  .card .foot{margin-top:11px;padding-top:11px;border-top:1px solid var(--line);
+        font-size:13px;color:var(--tx2);display:flex;gap:10px;align-items:baseline}
+  .card .foot .t{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--tx)}
+
+  .kvs{display:grid;grid-template-columns:auto 1fr;gap:9px 16px;font-size:14px;align-items:baseline}
+  .kvs .k{color:var(--tx3);white-space:nowrap}
+  .kvs .v{text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+
+  .cover{display:inline-flex;align-items:center;gap:8px;min-width:104px}
+  .cover .cbar{width:56px;height:7px;background:var(--panel2);border:1px solid var(--line);
+        border-radius:5px;overflow:hidden;flex:none}
+  .cover .cbar i{display:block;height:100%;background:var(--tx3)}
+  .cover.full .cbar i{background:var(--acc)}
+  .cover span{font-variant-numeric:tabular-nums;font-size:13px;color:var(--tx2)}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ================= 侧边栏 ================= -->
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">c</div>
+      <div><b>cmc 控制台</b><small>commandcode 反代管理</small></div>
+    </div>
+
+    <nav>
+      <button class="act" data-t="overview">
+        <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-5H3zM13 8h8V3h-8z"/></svg>概览
+      </button>
+      <button data-t="official">
+        <svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.4 8.3-8 9-4.6-.7-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg>官方额度
+      </button>
+      <button data-t="mapping">
+        <svg viewBox="0 0 24 24"><path d="M4 7h11M4 12h16M4 17h8"/><circle cx="18" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg>模型映射
+      </button>
+      <button data-t="control">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>代理控制
+      </button>
+      <button data-t="calc">
+        <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 12h2M12 12h2M16 12h.01M8 16h2M12 16h2M16 16h.01"/></svg>费用试算
+      </button>
+      <button data-t="raw">
+        <svg viewBox="0 0 24 24"><path d="M9 18l-6-6 6-6M15 6l6 6-6 6"/></svg>原始配置
+      </button>
+      <button data-t="settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1A1.7 1.7 0 007 19.4a1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H1a2 2 0 110-4h.1A1.7 1.7 0 002.6 9a1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3H7a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>设置
+      </button>
+    </nav>
+
+    <div class="side-foot">
+      <div class="stat">
+        <span class="dot" id="pdot"></span>
+        <div class="txt">
+          <div class="t1" id="pstate">连接中…</div>
+          <div class="t2" id="pport">—</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= 主区 ================= -->
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h1 id="pageTitle">概览</h1>
+        <div class="sub" id="pageSub">费用、token 与请求统计</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="g" onclick="refreshAll()">刷新</button>
+    </div>
+
+    <div class="content">
+      <div id="connWarn"></div>
+
+      <!-- ---------- 概览 ---------- -->
+      <section class="act" id="s-overview">
+        <div class="row" style="margin-bottom:16px">
+          <span class="muted">统计区间</span>
+          <select id="range" style="width:150px" onchange="loadUsage()">
+            <option value="1">今天</option>
+            <option value="7" selected>最近 7 天</option>
+            <option value="30">最近 30 天</option>
+          </select>
+          <span class="muted" id="filesInfo"></span>
+        </div>
+
+        <div id="jsonlWarn"></div>
+
+        <div class="grid">
+          <div class="card"><h3>总费用</h3><div class="big" id="m-cost">—</div><div class="sub" id="m-credit">—</div></div>
+          <div class="card"><h3>请求数</h3><div class="big" id="m-req">—</div><div class="sub" id="m-reqsub">—</div></div>
+          <div class="card"><h3>输入 token</h3><div class="big" id="m-in">—</div><div class="sub" id="m-insub">—</div></div>
+          <div class="card"><h3>输出 token</h3><div class="big" id="m-out">—</div><div class="sub" id="m-outsub">—</div></div>
+          <div class="card"><h3>缓存命中率</h3><div class="big" id="m-cache">—</div><div class="sub" id="m-cachesub">—</div></div>
+        </div>
+
+        <h2>按天费用 <span class="rule"></span></h2>
+        <div class="card"><div class="bars" id="dayBars"></div></div>
+
+        <h2>按模型 <span class="rule"></span></h2>
+        <div class="card flat scroll">
+          <table>
+            <thead><tr><th>模型</th><th class="num">请求</th><th class="num">失败</th>
+              <th class="num">输入</th><th class="num">输出</th><th class="num">缓存读</th>
+              <th class="num">费用</th><th class="num">额度</th></tr></thead>
+            <tbody id="byModel"></tbody>
+          </table>
+        </div>
+
+        <h2>最近请求 <span class="rule"></span></h2>
+        <div class="card flat scroll">
+          <table>
+            <thead><tr><th>时间</th><th>状态</th><th>请求模型</th><th>实际模型</th><th>流式</th>
+              <th class="num">耗时</th><th class="num">in / out</th><th class="num">缓存读</th><th class="num">费用</th></tr></thead>
+            <tbody id="recent"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---------- 官方额度 ---------- -->
+      <section id="s-official">
+        <div id="offWarn"></div>
+
+        <div class="row" style="margin-bottom:16px">
+          <span class="muted">数据来源</span>
+          <code>api.commandcode.ai/alpha/*</code>
+          <div class="spacer"></div>
+          <span class="muted" id="offFetched">—</span>
+          <button class="g" onclick="loadOfficial(true)">刷新官方数据</button>
+        </div>
+
+        <h2>限额窗口 <span class="rule"></span></h2>
+        <div class="grid" id="offMeters"></div>
+
+        <h2>官方 vs 本地 <span class="rule"></span></h2>
+        <div class="card">
+          <table>
+            <thead>
+              <tr>
+                <th>口径</th>
+                <th class="num">官方</th>
+                <th class="num">本地 cmc</th>
+                <th class="num">差异</th>
+                <th class="num">本地覆盖</th>
+                <th>判定</th>
+              </tr>
+            </thead>
+            <tbody id="offCompare"></tbody>
+          </table>
+          <div class="note" id="offCompareNote"></div>
+        </div>
+
+        <h2>账号与套餐 <span class="rule"></span></h2>
+        <div class="grid">
+          <div class="card"><h3>账号</h3><div class="kvs" id="offAccount">—</div></div>
+          <div class="card"><h3>套餐</h3><div class="kvs" id="offPlan">—</div></div>
+          <div class="card"><h3>计费周期内（官方口径）</h3><div class="kvs" id="offSummary">—</div></div>
+        </div>
+
+        <div class="note" style="margin-top:18px">
+          <b>两套账为什么要分开看：</b>
+          <br />· <b>官方</b>统计<span id="offScope1">全部客户端</span>的计费，口径是<b>滚动窗口</b>（5 小时 / 7 天）与<b>订阅周期</b>，只按 credit 值算。
+          <br />· <b>本地</b>只统计<b>经 cmc-proxy 转发</b>的请求，口径是你给的<b>任意时间区间</b>，费用按 <code>goat-prices.json</code> 的牌价估算。
+          <br />· 两者在<b>同一区间</b>内应当基本一致；不一致通常来自：本地日志开启之前的请求、没走 cmc 的客户端、以及官方计费的取整。
+          <br />· 官方这几个接口是<b>只读 GET</b>，查询不消耗额度。
+        </div>
+      </section>
+
+      <!-- ---------- 模型映射 ---------- -->
+      <section id="s-mapping">
+        <div class="note">
+          <b>modelMap</b> 是「客户端请求名 → 上游模型」的精确映射。Claude Desktop 只会发 Claude 系名字，
+          想用别的模型就把它挂在对应壳名下面。<br>
+          <b>注意</b>：<code>[1M]</code> 后缀不参与精确匹配，所以 <code>[1M]</code> 变体必须单独写一条 —— 保存时下面会自动同步。
+        </div>
+        <div id="mapWarn"></div>
+
+        <h2>四个主力档位 <span class="rule"></span></h2>
+        <div class="card">
+          <div id="tierRows"></div>
+        </div>
+
+        <h2>默认模型（客户端未点名时） <span class="rule"></span></h2>
+        <div class="card">
+          <div class="kv">
+            <div class="k">defaultModels</div>
+            <input id="defText" placeholder="多个用英文逗号分隔" />
+            <div class="k">defaultVisionModels</div>
+            <input id="defVis" placeholder="多个用英文逗号分隔" />
+          </div>
+        </div>
+
+        <h2>其他映射 <span class="muted" id="otherCount"></span> <span class="rule"></span></h2>
+        <div class="card flat scroll">
+          <table>
+            <thead><tr><th style="width:36%">客户端请求名</th><th style="width:52%">上游模型</th><th></th></tr></thead>
+            <tbody id="otherRows"></tbody>
+          </table>
+        </div>
+
+        <div class="row" style="margin-top:22px">
+          <button class="b" onclick="saveMapping()">保存映射</button>
+          <button class="g" onclick="loadConfig()">放弃修改</button>
+          <span class="muted" id="saveHint"></span>
+        </div>
+      </section>
+
+      <!-- ---------- 代理控制 ---------- -->
+      <section id="s-control">
+        <div class="grid">
+          <div class="card"><h3>代理状态</h3><div class="big sm" id="c-state">—</div><div class="sub" id="c-pid">—</div></div>
+          <div class="card"><h3>归属</h3><div class="big sm" id="c-own">—</div><div class="sub">外部实例不会被本控制台停止</div></div>
+          <div class="card"><h3>用量日志</h3><div class="big sm" id="c-jsonl">—</div><div class="sub mono" id="c-jsonlpath">—</div></div>
+        </div>
+
+        <h2>操作 <span class="rule"></span></h2>
+        <div class="card">
+          <div class="row">
+            <button class="b" id="btnStart" onclick="doStart()">启动 cmc-proxy</button>
+            <button class="d" id="btnStop" onclick="doStop()">停止（本控制台启动的）</button>
+            <button class="d" id="btnForce" onclick="doStopForce()">强制停止（含外部实例）</button>
+          </div>
+          <div class="note" id="ctlMsg">
+            <b>一个入口就够：</b>双击 <code>start-gui.bat</code> 会顺带把代理也拉起来，不用先跑 <code>start.bat</code>。<br />
+            改完 <code>config.json</code> 需要重启代理才生效。「停止」只停本控制台启动的那个；
+            想停别处启动的（比如手动跑的），用「强制停止」。
+          </div>
+        </div>
+
+        <h2>jsonlLog（用量统计的数据源） <span class="rule"></span></h2>
+        <div class="card">
+          <div class="row">
+            <label class="row" style="gap:9px;font-size:14px">
+              <input type="checkbox" id="jsonlChk" style="width:auto" />开启结构化日志
+            </label>
+            <button class="g" onclick="saveJsonl()">保存</button>
+            <span class="muted">开启后写 <code>logs/requests.jsonl</code>，需重启代理生效</span>
+          </div>
+        </div>
+
+        <h2>本控制台启动的实例输出 <span class="rule"></span></h2>
+        <pre id="childLog">（无 —— 只有在上面点过「启动」才有内容）</pre>
+      </section>
+
+      <!-- ---------- 费用试算 ---------- -->
+      <section id="s-calc">
+        <div class="note">用 <code>goat-prices.json</code> 的官方牌价即时估算。</div>
+        <div class="card">
+          <div class="field" style="margin-bottom:18px">
+            <label>模型</label>
+            <select id="calcModel"></select>
+          </div>
+          <div class="grid">
+            <div class="field"><label>输入 token</label><input id="calcIn" type="number" value="800" /></div>
+            <div class="field"><label>输出 token</label><input id="calcOut" type="number" value="200" /></div>
+            <div class="field"><label>缓存读 token</label><input id="calcCr" type="number" value="50000" /></div>
+            <div class="field"><label>缓存写 token</label><input id="calcCw" type="number" value="0" /></div>
+          </div>
+          <div class="row" style="margin-top:20px"><button class="b" onclick="doCalc()">估算</button></div>
+          <div id="calcOut2" style="margin-top:20px"></div>
+        </div>
+      </section>
+
+      <!-- ---------- 原始配置 ---------- -->
+      <section id="s-raw">
+        <div class="note">直接编辑 <code>config.json</code>（<b>上游 cmc-proxy 的配置</b>）。保存前会自动备份到 <code>backups/</code>。
+          <br /><b>注意</b>：<code>apiKey</code> 在这里始终以掩码 <code>user_****末4位</code> 显示 —— <b>这是刻意的</b>，明文不会下发到浏览器。
+          保持掩码不动就表示"不修改"；要换 Key 请用<a href="#" onclick="go('settings');return false">设置</a>页。</div>
+        <textarea id="rawText" rows="30" class="mono" spellcheck="false"></textarea>
+        <div class="row" style="margin-top:16px">
+          <button class="b" onclick="saveRaw()">校验并保存</button>
+          <button class="g" onclick="loadRaw()">重新载入</button>
+          <span class="muted" id="rawHint"></span>
+        </div>
+      </section>
+
+      <!-- ---------- 设置 ---------- -->
+      <section id="s-settings">
+        <div id="setWarn"></div>
+
+        <h2>上游连接 <span class="rule"></span></h2>
+        <div class="card">
+          <div class="kv">
+            <span class="k">Base URL</span>
+            <input id="setUpstream" class="mono" placeholder="https://api.commandcode.ai/provider" />
+            <span class="k">API Key</span>
+            <div class="row" style="gap:8px">
+              <input id="setKey" type="password" class="mono" style="flex:1" placeholder="user_..." />
+              <button class="g" onclick="toggleKey()" id="btnEye">显示</button>
+              <button class="g" onclick="testUpstream()">测试连接</button>
+            </div>
+          </div>
+          <div class="note" style="margin-top:14px">
+            这个 Key 就是 cmc-proxy 转发到上游用的那个，也是官方额度接口用的<b>同一个</b>。
+            从磁盘读出来时一律掩码，<b>留空或保持掩码 = 不修改</b>。
+          </div>
+          <div id="testUpMsg" style="margin-top:10px"></div>
+        </div>
+
+        <h2>官方额度 <span class="rule"></span></h2>
+        <div class="card">
+          <div class="kv">
+            <span class="k">启用查询</span>
+            <label class="row" style="gap:9px;font-size:14px">
+              <input type="checkbox" id="setOfficial" style="width:auto" />查 5 小时 / 周 / 月限额
+            </label>
+            <span class="k">出网代理</span>
+            <div class="row" style="gap:8px">
+              <input id="setProxy" class="mono" style="flex:1" placeholder="留空 = 直连，例：http://127.0.0.1:10809" />
+              <button class="g" onclick="testOfficial()">测试</button>
+            </div>
+          </div>
+          <div class="note" style="margin-top:14px">
+            <b>为什么需要代理</b>：官方接口在境外。直连不通时填上你的本地代理（v2rayN 默认 HTTP 入站 <code>127.0.0.1:10809</code>）。
+            <br /><b>改代理后要重启控制台才生效</b> —— Node 的 fetch 在第一次请求时就固定了 dispatcher，之后改变量不再起作用。
+          </div>
+          <div id="testOffMsg" style="margin-top:10px"></div>
+        </div>
+
+        <h2>控制台 <span class="rule"></span></h2>
+        <div class="card">
+          <div class="kv">
+            <span class="k">控制台端口</span>
+            <input id="setGuiPort" type="number" min="1024" max="65535" placeholder="5419" />
+            <span class="k">代理端口</span>
+            <input id="setProxyPort" type="number" min="1024" max="65535" placeholder="5411" />
+            <span class="k">侧边栏标题</span>
+            <input id="setTitle" placeholder="cmc 控制台" />
+          </div>
+          <div class="note" style="margin-top:14px">
+            控制台端口存在 <code>gui.config.json</code>（控制台自己的配置，已 gitignore）；
+            代理端口存在 <code>config.json</code>（cmc-proxy 读的那个）。<b>两个都要重启才生效。</b>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:20px">
+          <button class="b" onclick="saveSettings()">保存设置</button>
+          <button class="g" onclick="loadSettings()">重新载入</button>
+          <button class="g" onclick="exportSanitized()">复制脱敏配置</button>
+          <span class="muted" id="setHint"></span>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtMoney = (n) => "$" + (n ?? 0).toFixed((n ?? 0) >= 1 ? 3 : 5);
+const fmtNum = (n) => (n ?? 0).toLocaleString("en-US");
+const fmtTok = (n) => n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "K" : String(n ?? 0);
+const fmtTime = (iso) => { const d = new Date(iso); return isNaN(d) ? "—" : d.toLocaleString("zh-CN", { hour12: false }).slice(5); };
+
+const PAGES = {
+  overview: ["概览", "费用、token 与请求统计"],
+  official: ["官方额度", "5 小时 / 周 / 月限额，官方 vs 本地"],
+  mapping:  ["模型映射", "客户端请求名 → 上游模型"],
+  control:  ["代理控制", "启停、状态与日志开关"],
+  calc:     ["费用试算", "按官方牌价即时估算"],
+  raw:      ["原始配置", "直接编辑 config.json"],
+  settings: ["设置", "上游连接 · 官方额度 · 控制台"],
+};
+
+let STATUS = null, CONFIG = null, MODELS = null, API_DEAD = false;
+
+function toast(msg, isErr) {
+  const d = document.createElement("div");
+  if (isErr) d.className = "err";
+  d.textContent = msg;
+  $("toast").appendChild(d);
+  setTimeout(() => d.remove(), 5200);
+}
+async function api(p, opt) {
+  const r = await fetch(p, Object.assign({ headers: { "Content-Type": "application/json" } }, opt));
+  const t = await r.text();
+  try { return JSON.parse(t); } catch { return { error: t.slice(0, 200) || "空响应" }; }
+}
+
+/* ---------- 导航 ---------- */
+function go(t) {
+  const btn = document.querySelector(`nav button[data-t="${t}"]`);
+  if (!btn) return;
+  document.querySelectorAll("nav button").forEach((x) => x.classList.remove("act"));
+  document.querySelectorAll("section").forEach((x) => x.classList.remove("act"));
+  btn.classList.add("act");
+  $("s-" + t).classList.add("act");
+  const [title, sub] = PAGES[t] || ["", ""];
+  $("pageTitle").textContent = title;
+  $("pageSub").textContent = sub;
+  // 切到官方额度页时顺手拉一次最新（后端有 45s 缓存，不会打爆接口）
+  if (t === "official") loadOfficial(false);
+  if (t === "settings") loadSettings();
+  if (t === "raw") loadRaw();
+}
+
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => go(b.dataset.t));
+
+/* ---------- 状态 ---------- */
+async function loadStatus() {
+  STATUS = await api("/api/status");
+  if (STATUS.error) {
+    API_DEAD = true;
+    $("connWarn").innerHTML = `<div class="note err">
+      <b>连不上控制台后端。</b>你打开的可能是静态页面（没有后端）。请双击
+      <code>start-gui.bat</code> 启动，然后访问 <code>http://127.0.0.1:5419</code>。
+      错误：${esc(STATUS.error)}</div>`;
+    $("pdot").className = "dot off";
+    $("pstate").textContent = "后端未连接";
+    $("pport").textContent = "—";
+    return STATUS;
+  }
+  API_DEAD = false;
+  $("connWarn").innerHTML = "";
+
+  const on = STATUS.proxyRunning;
+  const pidTxt = STATUS.proxyPid != null
+    ? `PID ${STATUS.proxyPid}`
+    : (STATUS.pidProbeFailed ? "PID 未知（探测不可用）" : "PID ?");
+  $("pdot").className = "dot " + (on ? "on" : "off");
+  $("pstate").textContent = on ? "代理运行中" : "代理未运行";
+  $("pport").textContent = `:${STATUS.proxyPort} · ${pidTxt}`;
+
+  $("c-state").textContent = on ? "运行中" : "未运行";
+  $("c-pid").textContent = on ? `${pidTxt} · 端口 ${STATUS.proxyPort}` : `端口 ${STATUS.proxyPort} 空闲`;
+  $("c-own").textContent = STATUS.managedByGui ? "本控制台启动" : (on ? "外部启动" : "—");
+  $("c-jsonl").textContent = STATUS.jsonlEnabled ? (STATUS.jsonlExists ? "已开启" : "已开启（暂无数据）") : "已关闭";
+  $("c-jsonlpath").textContent = STATUS.jsonlPath || "—";
+  $("btnStart").disabled = on || STATUS.managedByGui;
+  $("btnStop").disabled = !STATUS.managedByGui;
+  $("btnForce").disabled = !on;
+
+  // 独立仓库场景：目录里没有 proxy.js 时，明确告诉用户缺什么
+  if (STATUS.proxyJsPresent === false) {
+    $("ctlMsg").innerHTML = `<div class="note err"><b>这个目录里没有 <code>proxy.js</code>。</b>
+      控制台只是界面，代理本体要放在同一个目录 —— 把 cmc-proxy 的
+      <code>proxy.js</code> / <code>config.json</code> 放到这里，或把本仓库的文件复制进你的 cmc-proxy 目录。</div>`;
+    $("btnStart").disabled = true;
+  }
+  $("jsonlChk").checked = !!STATUS.jsonlEnabled;
+  return STATUS;
+}
+
+/* ---------- 概览 ---------- */
+async function loadUsage() {
+  if (API_DEAD) return;
+  const d = await api("/api/usage?days=" + $("range").value);
+  if (d.error) return;
+  if (d.disabled) {
+    $("jsonlWarn").innerHTML = `<div class="note">${esc(d.message)}</div>`;
+    ["m-cost","m-req","m-in","m-out","m-cache"].forEach(i => $(i).textContent = "—");
+    $("byModel").innerHTML = ""; $("recent").innerHTML = ""; $("dayBars").innerHTML = "";
+    return;
+  }
+  $("jsonlWarn").innerHTML = "";
+  const t = d.totals;
+  $("m-cost").textContent = fmtMoney(t.cost);
+  $("m-credit").textContent = `credits ${t.credit.toFixed(5)}`;
+  $("m-req").textContent = fmtNum(t.requests);
+  $("m-reqsub").innerHTML = `成功 ${t.ok} · <span style="color:#f09595">失败 ${t.fail}</span>`;
+  $("m-in").textContent = fmtTok(t.in);
+  $("m-insub").textContent = `缓存读 ${fmtTok(t.cr)}`;
+  $("m-out").textContent = fmtTok(t.out);
+  $("m-outsub").textContent = `推理 ${fmtTok(t.rt)}`;
+  $("m-cache").textContent = t.cacheHit + "%";
+  $("m-cachesub").textContent = t.avgTtfb ? `首字节均值 ${t.avgTtfb}ms` : "";
+  $("filesInfo").textContent = d.files.length ? `${d.files.length} 个日志文件` : "无日志文件";
+
+  const max = Math.max(1, ...d.byDay.map((x) => x.cost));
+  $("dayBars").innerHTML = d.byDay.map((x) =>
+    `<div class="bar" style="height:${Math.max(3, (x.cost / max) * 100)}%" title="${x.day}  $${x.cost.toFixed(4)}  ${x.n} 次"><span>${x.day.slice(5)}</span></div>`
+  ).join("") || `<span class="muted">无数据</span>`;
+
+  $("byModel").innerHTML = d.byModel.map((m) => `<tr>
+    <td class="mono">${esc(m.model)}</td><td class="num">${m.n}</td>
+    <td class="num">${m.fail ? `<span class="pill err">${m.fail}</span>` : "0"}</td>
+    <td class="num">${fmtTok(m.in)}</td><td class="num">${fmtTok(m.out)}</td><td class="num">${fmtTok(m.cr)}</td>
+    <td class="num">${fmtMoney(m.cost)}</td><td class="num muted">${m.credit.toFixed(5)}</td></tr>`).join("")
+    || `<tr><td colspan="8" class="muted" style="padding:20px">暂无数据</td></tr>`;
+
+  $("recent").innerHTML = d.recent.slice(0, 100).map((r) => {
+    const ok = r.status >= 200 && r.status < 300;
+    const u = r.usage || {};
+    return `<tr>
+      <td class="mono muted">${fmtTime(r.ts)}</td>
+      <td><span class="pill ${ok ? "ok" : "err"}">${r.status}</span></td>
+      <td class="mono">${esc(r.reqModel || "—")}</td>
+      <td class="mono">${esc(r.model)}</td>
+      <td class="muted">${r.stream ? "是" : "否"}</td>
+      <td class="num">${r.ms != null ? (r.ms / 1000).toFixed(2) + "s" : "—"}</td>
+      <td class="num mono">${u.in ?? 0} / ${u.out ?? 0}</td>
+      <td class="num mono">${u.cr ?? 0}</td>
+      <td class="num">${r.cost ? fmtMoney(r.cost) : "—"}</td></tr>`;
+  }).join("") || `<tr><td colspan="9" class="muted" style="padding:20px">暂无数据</td></tr>`;
+}
+
+/* ---------- 官方额度 ---------- */
+const OFFICIAL_REFRESH_MS = 60000;
+
+function fmtCountdown(ms) {
+  if (ms == null || ms <= 0) return "已到重置时间";
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60), sec = s % 60;
+  if (d > 0) return `${d} 天 ${h} 小时 ${m} 分`;
+  if (h > 0) return `${h} 小时 ${m} 分`;
+  if (m > 0) return `${m} 分 ${sec} 秒`;
+  return `${sec} 秒`;
+}
+
+function meterClass(used, cap) {
+  if (!cap || used == null) return "";
+  const r = used / cap;
+  return r >= 0.8 ? "danger" : r >= 0.5 ? "warn" : "";
+}
+
+function renderOfficial(d) {
+  const o = d.official || {};
+  OFFICIAL = d;
+
+  if (!o.ok) {
+    if (o.disabled) {
+      $("offWarn").innerHTML = `<div class="note"><b>官方额度查询已关闭。</b>
+        到<a href="#" onclick="go('settings');return false">设置</a>页勾上「启用查询」即可。</div>`;
+    } else {
+      $("offWarn").innerHTML = `<div class="note err"><b>取不到官方数据。</b>${esc(o.error || "未知错误")}
+        <br />· 官方接口在境外，通常需要一个出网代理 —— 到<a href="#" onclick="go('settings');return false">设置</a>页填「出网代理」。
+        <br />· 顺便确认「上游连接」里的 API Key 是 <code>user_...</code> 开头的那个。</div>`;
+    }
+    $("offMeters").innerHTML = "";
+    $("offCompare").innerHTML = `<tr><td colspan="6" class="muted" style="padding:20px">官方数据不可用</td></tr>`;
+    $("offCompareNote").textContent = "";
+    $("offAccount").innerHTML = `<span class="k">—</span><span class="v">—</span>`;
+    $("offPlan").innerHTML = `<span class="k">—</span><span class="v">—</span>`;
+    $("offSummary").innerHTML = `<span class="k">—</span><span class="v">—</span>`;
+    $("offFetched").textContent = o.fetchedAt ? "上次尝试 " + fmtTime(o.fetchedAt) : "—";
+    return;
+  }
+
+  $("offWarn").innerHTML = "";
+  $("offFetched").textContent = "更新于 " + fmtTime(o.fetchedAt);
+  const now = Date.now();
+
+  /* --- 三张限额卡 --- */
+  const w = o.windows || {};
+  const cr = o.credits || {};
+  const cards = [];
+
+  const winCard = (title, x, label) => {
+    if (!x) return "";
+    const pct = x.cap ? (x.used / x.cap) * 100 : 0;
+    const cls = meterClass(x.used, x.cap);
+    const left = x.resetAt - now;
+    return `<div class="card">
+      <h3>${title}${x.exceeded ? ' <span class="pill err">已触顶</span>' : ""}</h3>
+      <div class="meter ${cls}"><div class="fill" style="width:${Math.min(100, pct).toFixed(2)}%"></div></div>
+      <div class="mrow">
+        <span class="mused">${x.used.toFixed(4)}</span>
+        <span class="mcap">/ ${x.cap} credits</span>
+        <span class="mpct ${cls}">${pct.toFixed(1)}%</span>
+      </div>
+      <div class="foot"><span>重置倒计时</span>
+        <span class="t">${fmtCountdown(left)}</span></div>
+      <div class="foot"><span>${label}</span>
+        <span class="t">${x.resetAt ? fmtTime(new Date(x.resetAt).toISOString()) : "—"}</span></div>
+    </div>`;
+  };
+
+  cards.push(winCard("5 小时窗口", w.fiveHour, "重置时刻"));
+  cards.push(winCard("本周窗口", w.weekly, "重置时刻"));
+
+  if (cr.monthlyGranted != null) {
+    const used = cr.monthlyGranted - cr.monthlyRemaining;
+    const pct = (used / cr.monthlyGranted) * 100;
+    const cls = meterClass(used, cr.monthlyGranted);
+    const endMs = o.plan ? o.plan.periodEnd : null;
+    cards.push(`<div class="card">
+      <h3>本月额度 <span class="pill">${esc(o.plan ? o.plan.planId : "")}</span></h3>
+      <div class="meter ${cls}"><div class="fill" style="width:${Math.min(100, pct).toFixed(2)}%"></div></div>
+      <div class="mrow">
+        <span class="mused">${used.toFixed(4)}</span>
+        <span class="mcap">/ ${cr.monthlyGranted.toFixed(2)} credits</span>
+        <span class="mpct ${cls}">${pct.toFixed(1)}%</span>
+      </div>
+      <div class="foot"><span>剩余</span><span class="t">${cr.monthlyRemaining.toFixed(4)} credits</span></div>
+      <div class="foot"><span>周期结束</span>
+        <span class="t">${endMs ? fmtCountdown(endMs - now) : "—"}</span></div>
+      <div class="foot" style="border-top:none;padding-top:0;margin-top:6px">
+        <span class="muted" style="font-size:12.5px">授予额 = 剩余 + 本期已用（官方不直接给，靠推算）</span></div>
+    </div>`);
+  }
+  $("offMeters").innerHTML = cards.join("");
+
+  /* --- 官方 vs 本地 --- */
+  const rows = d.comparison || [];
+  $("offCompare").innerHTML = rows.map((r) => {
+    const full = r.coverPct != null && r.coverPct >= 99;
+    let verdict, vcls;
+    if (r.comparable) {
+      const off = Math.abs(r.diffPct || 0);
+      if (off < 1) { verdict = "一致"; vcls = "ok"; }
+      else if (off < 5) { verdict = "轻微偏差"; vcls = ""; }
+      else { verdict = "有差异"; vcls = "err"; }
+    } else {
+      verdict = "区间不全，不可比"; vcls = "";
+    }
+    return `<tr>
+      <td>${esc(r.label)}${r.cap ? ` <span class="muted">cap ${r.cap}</span>` : ""}</td>
+      <td class="num mono">${r.official != null ? r.official.toFixed(6) : "—"}</td>
+      <td class="num mono">${r.local != null ? r.local.toFixed(6) : "—"}</td>
+      <td class="num mono">${r.diff != null ? (r.diff >= 0 ? "+" : "") + r.diff.toFixed(6) : "—"}</td>
+      <td><span class="cover ${full ? "full" : ""}">
+        <span class="cbar"><i style="width:${r.coverPct ?? 0}%"></i></span>
+        <span>${r.coverPct ?? 0}%</span></span></td>
+      <td>${verdict ? `<span class="pill ${vcls}">${verdict}</span>` : ""}
+        ${r.localRequests != null ? `<span class="muted" style="margin-left:6px">本地 ${r.localRequests} 次</span>` : ""}</td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="6" class="muted" style="padding:20px">暂无数据</td></tr>`;
+
+  const f = rows.find((x) => x.key === "fiveHour");
+  let note = d.jsonlEnabled
+    ? ""
+    : `<b>本地日志没开</b>（config.json 里 jsonlLog = false），本地那一列全是 0。到「代理控制」页打开并重启代理。`;
+  if (f && f.logStart) {
+    note += ` 本地日志最早一条：<b>${fmtTime(new Date(f.logStart).toISOString())}</b>。`;
+  }
+  note += ` 「本地覆盖」= 本地日志能看到的时间 / 该窗口总时长。<b>只有覆盖 100% 时，两个数字才真正可比</b>；覆盖不足时官方大于本地是正常的（本地没记到，不是对不上）。`;
+  $("offCompareNote").innerHTML = note;
+
+  /* --- 账号 / 套餐 / 汇总 --- */
+  const a = o.account || {};
+  $("offAccount").innerHTML = [
+    ["用户名", a.userName || "—"],
+    ["邮箱", a.email || "—"],
+    ["用户 ID", a.id ? a.id.slice(0, 18) + "…" : "—"],
+  ].map(([k, v]) => `<span class="k">${k}</span><span class="v mono">${esc(v)}</span>`).join("");
+
+  const p = o.plan || {};
+  $("offPlan").innerHTML = [
+    ["套餐", p.planId || "—"],
+    ["状态", p.status || "—"],
+    ["周期起", p.periodStart ? fmtTime(new Date(p.periodStart).toISOString()) : "—"],
+    ["周期止", p.periodEnd ? fmtTime(new Date(p.periodEnd).toISOString()) : "—"],
+  ].map(([k, v]) => `<span class="k">${k}</span><span class="v">${esc(v)}</span>`).join("");
+
+  const s = o.summary || {};
+  $("offSummary").innerHTML = [
+    ["请求数", s.totalCount != null ? fmtNum(s.totalCount) : "—"],
+    ["费用", s.totalCost != null ? fmtMoney(s.totalCost) : "—"],
+    ["输入 token", s.tokensIn != null ? fmtTok(s.tokensIn) : "—"],
+    ["输出 token", s.tokensOut != null ? fmtTok(s.tokensOut) : "—"],
+    ["成功率", s.successRate != null ? s.successRate + "%" : "—"],
+    ["口径", s.periodBasis || "—"],
+  ].map(([k, v]) => `<span class="k">${k}</span><span class="v">${esc(v)}</span>`).join("");
+}
+
+let OFFICIAL = null;
+let officialTimer = null;
+
+async function loadOfficial(force) {
+  if (API_DEAD) return;
+  const d = await api("/api/official" + (force ? "?force=1" : ""));
+  if (d.error) return;
+  OFFICIAL = d;
+  renderOfficial(d);
+}
+
+function startOfficialTimer() {
+  const tick = async (ms) => {
+    if (officialTimer) clearTimeout(officialTimer);
+    officialTimer = setTimeout(async () => {
+      if (document.getElementById("s-official").classList.contains("act")) {
+        await loadOfficial(false);
+      }
+      const ok = OFFICIAL && OFFICIAL.official && OFFICIAL.official.ok;
+      // 失败时更勤快地重试（后端失败只缓存 8s）
+      tick(ok ? OFFICIAL_REFRESH_MS : 12000);
+    }, ms);
+  };
+  tick(OFFICIAL_REFRESH_MS);
+}
+
+/* ---------- 模型映射 ---------- */
+const TIERS = [
+  { key: "claude-opus-5",    label: "Opus 档" },
+  { key: "claude-fable-5",   label: "Fable 档" },
+  { key: "claude-sonnet-5",  label: "Sonnet 档" },
+  { key: "claude-haiku-4-5", label: "Haiku 档" },
+];
+
+async function loadConfig() {
+  CONFIG = await api("/api/config");
+  if (CONFIG.error) return;
+  if (!MODELS) MODELS = await api("/api/models");
+  renderMapping();
+  $("rawText").value = JSON.stringify(CONFIG, null, 2);
+  $("defText").value = (CONFIG.defaultModels || []).join(", ");
+  $("defVis").value = (CONFIG.defaultVisionModels || []).join(", ");
+  $("saveHint").textContent = "";
+  $("mapWarn").innerHTML = MODELS.upstreamError
+    ? `<div class="note">${esc(MODELS.upstreamError)}（下拉框仍可用 goat-prices.json 里的模型）</div>` : "";
+}
+
+function modelOptions(sel) {
+  return ((MODELS && MODELS.prices) || []).map((m) =>
+    `<option value="${esc(m.id)}" ${m.id === sel ? "selected" : ""}>${esc(m.name)} — ${esc(m.id)}</option>`).join("");
+}
+
+function renderMapping() {
+  const map = CONFIG.modelMap || {};
+  $("tierRows").innerHTML = TIERS.map((t) => `
+    <div class="row" style="margin-bottom:14px">
+      <span style="width:92px;color:var(--tx2);font-size:13.5px">${t.label}</span>
+      <input class="mono" style="max-width:270px" value="${esc(t.key)}" data-tier="${t.key}" data-kind="key" />
+      <span class="muted">→</span>
+      <select style="max-width:480px" data-tier="${t.key}" data-kind="model">
+        <option value="">（选择上游模型）</option>${modelOptions(map[t.key])}
+      </select>
+      <span class="muted mono">[1M] 同</span>
+    </div>`).join("");
+
+  const others = Object.keys(map).filter((k) => !TIERS.some((t) => t.key === k));
+  $("otherCount").textContent = `（${others.length} 条）`;
+  $("otherRows").innerHTML = others.map((k) => `<tr>
+      <td><input class="mono" value="${esc(k)}" data-kind="okey" /></td>
+      <td><select data-kind="omodel"><option value="">（选择）</option>${modelOptions(map[k])}</select></td>
+      <td><button class="g sm" onclick="this.closest('tr').remove()">删除</button></td></tr>`).join("");
+}
+
+function collectMapping() {
+  const map = {};
+  document.querySelectorAll('#tierRows [data-kind="key"]').forEach((inp) => {
+    const k = inp.value.trim();
+    const sel = document.querySelector(`#tierRows [data-kind="model"][data-tier="${inp.dataset.tier}"]`);
+    if (k && sel && sel.value) { map[k] = sel.value; map[k + "[1M]"] = sel.value; }
+  });
+  document.querySelectorAll("#otherRows tr").forEach((tr) => {
+    const k = tr.querySelector('[data-kind="okey"]').value.trim();
+    const v = tr.querySelector('[data-kind="omodel"]').value;
+    if (k && v) map[k] = v;
+  });
+  return map;
+}
+
+async function saveMapping() {
+  CONFIG.modelMap = collectMapping();
+  CONFIG.defaultModels = $("defText").value.split(",").map((s) => s.trim()).filter(Boolean);
+  CONFIG.defaultVisionModels = $("defVis").value.split(",").map((s) => s.trim()).filter(Boolean);
+  const r = await api("/api/config", { method: "PUT", body: JSON.stringify(CONFIG) });
+  toast(r.message || r.error, !!r.error);
+  $("saveHint").textContent = r.ok ? "已保存" : "";
+  await loadConfig();
+}
+
+/* ---------- 控制 ---------- */
+async function doStart() {
+  const r = await api("/api/proxy/start", { method: "POST" });
+  toast(r.message, !r.ok); await refreshAll();
+}
+async function doStop() {
+  if (!confirm("停止本控制台启动的 cmc-proxy？正在进行的请求会中断。")) return;
+  const r = await api("/api/proxy/stop", { method: "POST" });
+  toast(r.message, !r.ok); await refreshAll();
+}
+async function doStopForce() {
+  if (!confirm("强制停止监听代理端口的那个进程？\n\n不管它是谁启动的都会被结束，正在进行的请求会中断。\n（用于收拾「关掉控制台窗口后残留」的代理）")) return;
+  const r = await api("/api/proxy/stop", { method: "POST", body: JSON.stringify({ force: true }) });
+  toast(r.message, !r.ok); await refreshAll();
+}
+async function saveJsonl() {
+  CONFIG.jsonlLog = $("jsonlChk").checked;
+  const r = await api("/api/config", { method: "PUT", body: JSON.stringify(CONFIG) });
+  toast(r.message || r.error, !!r.error);
+}
+async function loadChildLog() {
+  if (API_DEAD) return;
+  const d = await api("/api/logs");
+  $("childLog").textContent = (d.lines || []).join("\n") || (d.note ? "（" + d.note + "）" : "（无）");
+}
+
+/* ---------- 试算 ---------- */
+async function doCalc() {
+  const r = await api("/api/cost", {
+    method: "POST",
+    body: JSON.stringify({
+      model: $("calcModel").value,
+      input: +$("calcIn").value, output: +$("calcOut").value,
+      cacheRead: +$("calcCr").value, cacheWrite: +$("calcCw").value,
+    }),
+  });
+  if (r.error) return ($("calcOut2").innerHTML = `<div class="note err">${esc(r.error)}</div>`);
+  $("calcOut2").innerHTML = `
+    <div class="big">${fmtMoney(r.totalUsd)}</div>
+    <div class="sub" style="margin-bottom:16px">${esc(r.model)} · credits ${r.credit.toFixed(6)}${r.monthlyCredits ? ` · 月额度 $${r.monthlyCredits}` : ""}</div>
+    <div class="card flat scroll"><table>
+      <thead><tr><th>项</th><th class="num">token</th><th class="num">牌价 $/M</th><th class="num">小计</th></tr></thead>
+      <tbody>${r.breakdown.map((b) => `<tr><td>${b.key}</td>
+        <td class="num mono">${fmtNum(b.tokens)}</td>
+        <td class="num mono">${b.rateUsdPerMTok ?? "无牌价"}</td>
+        <td class="num mono">$${b.usd.toFixed(6)}</td></tr>`).join("")}</tbody>
+    </table></div>`;
+}
+
+/* ---------- 设置 ---------- */
+let GUICFG = null;
+
+async function loadSettings() {
+  if (API_DEAD) return;
+  const [g, c] = await Promise.all([api("/api/gui-config"), api("/api/config")]);
+  if (g.error || c.error) {
+    $("setWarn").innerHTML = `<div class="note err">读不到配置：${esc(g.error || c.error)}</div>`;
+    return;
+  }
+  $("setWarn").innerHTML = "";
+  GUICFG = g;
+  const gc = g.config || {};
+  $("setUpstream").value = c.upstream || "";
+  $("setKey").value = c.apiKey || "";           // 这里拿到的一律是掩码
+  $("setProxyPort").value = c.port || 5411;
+  $("setGuiPort").value = gc.port || 5419;
+  $("setProxy").value = gc.proxy || "";
+  $("setTitle").value = gc.title || "cmc 控制台";
+  $("setOfficial").checked = gc.officialApi !== false;
+  if (gc.title) {
+    const b = document.querySelector(".brand b");
+    if (b) b.textContent = gc.title;
+    document.title = gc.title;
+  }
+
+  // 当前生效值（启动时定死）与配置值不同 = 需要重启
+  const eff = g.effective || {};
+  const diffs = [];
+  if (eff.port !== undefined && Number(eff.port) !== Number(gc.port)) diffs.push("控制台端口");
+  if ((eff.proxy || "") !== (gc.proxy || "")) diffs.push("出网代理");
+  $("setHint").innerHTML = diffs.length
+    ? `<span style="color:var(--amber)">${diffs.join("、")}：配置文件已改，但当前进程仍用旧值 —— 重启控制台生效</span>`
+    : "";
+}
+
+function toggleKey() {
+  const el = $("setKey");
+  const show = el.type === "password";
+  el.type = show ? "text" : "password";
+  $("btnEye").textContent = show ? "隐藏" : "显示";
+}
+
+function testMsg(id, r) {
+  $(id).innerHTML = `<span class="pill ${r.ok ? "ok" : "err"}">${r.ok ? "通过" : "失败"}</span>
+    <span class="muted" style="margin-left:8px">${esc(r.message || r.error || "")}</span>`;
+}
+
+async function testUpstream() {
+  $( "testUpMsg").innerHTML = `<span class="muted">测试中…</span>`;
+  // 先把当前输入框里的值存下去再测（否则测的是旧值）
+  const saved = await saveSettings(true);
+  if (!saved) return;
+  testMsg("testUpMsg", await api("/api/test/upstream", { method: "POST" }));
+}
+
+async function testOfficial() {
+  $("testOffMsg").innerHTML = `<span class="muted">测试中…（会实际请求一次官方接口）</span>`;
+  testMsg("testOffMsg", await api("/api/test/official", { method: "POST" }));
+}
+
+/** 保存设置：config.json（上游项）+ gui.config.json（控制台项） */
+async function saveSettings(silent) {
+  const guiPort = parseInt($("setGuiPort").value, 10);
+  const proxyPort = parseInt($("setProxyPort").value, 10);
+  if (guiPort && (guiPort < 1024 || guiPort > 65535)) {
+    toast("控制台端口要在 1024–65535 之间", true); return false;
+  }
+  if (proxyPort && (proxyPort < 1024 || proxyPort > 65535)) {
+    toast("代理端口要在 1024–65535 之间", true); return false;
+  }
+
+  // 上游项 —— apiKey 传回掩码时后端会保留原值
+  CONFIG = CONFIG || {};
+  CONFIG.upstream = $("setUpstream").value.trim();
+  CONFIG.apiKey = $("setKey").value;
+  if (proxyPort) CONFIG.port = proxyPort;
+  const r1 = await api("/api/config", { method: "PUT", body: JSON.stringify(CONFIG) });
+  if (r1.error || !r1.ok) { toast(r1.error || "保存上游配置失败", true); return false; }
+
+  const r2 = await api("/api/gui-config", {
+    method: "PUT",
+    body: JSON.stringify({
+      port: guiPort || 5419,
+      proxy: $("setProxy").value.trim(),
+      officialApi: $("setOfficial").checked,
+      title: $("setTitle").value.trim() || "cmc 控制台",
+    }),
+  });
+  if (r2.error || !r2.ok) { toast(r2.error || "保存控制台配置失败", true); return false; }
+
+  await loadConfig();
+  if (!silent) {
+    toast(r2.message || "已保存", false);
+    $("setHint").textContent = r2.message || "已保存";
+    loadSettings();
+  }
+  return true;
+}
+
+/** 复制一份把 Key 抹掉的 config，方便贴到 issue / 仓库里 */
+async function exportSanitized() {
+  const c = await api("/api/config");
+  const clean = { ...c, apiKey: "" };
+  const txt = JSON.stringify(clean, null, 2);
+  try {
+    await navigator.clipboard.writeText(txt);
+    toast("已复制脱敏配置到剪贴板（apiKey 已清空）", false);
+  } catch {
+    $("rawHint").textContent = "";
+    window.prompt("复制下面这份（apiKey 已清空）：", txt);
+  }
+}
+
+/* ---------- 原始配置 ---------- */
+function loadRaw() { $("rawText").value = JSON.stringify(CONFIG, null, 2); $("rawHint").textContent = ""; }
+async function saveRaw() {
+  let obj;
+  try { obj = JSON.parse($("rawText").value); }
+  catch (e) { return toast("JSON 语法错误：" + e.message, true); }
+  const r = await api("/api/config", { method: "PUT", body: JSON.stringify(obj) });
+  toast(r.message || r.error, !!r.error);
+  if (r.ok) { $("rawHint").textContent = "已保存"; await loadConfig(); }
+}
+
+/* ---------- 启动 ---------- */
+async function refreshAll() {
+  await loadStatus();
+  if (API_DEAD) return;
+  await loadUsage(); await loadChildLog(); await loadOfficial(false);
+}
+
+(async function init() {
+  await loadStatus();
+  if (API_DEAD) return;
+  await loadConfig();
+  $("calcModel").innerHTML = ((MODELS && MODELS.prices) || []).map((m) =>
+    `<option value="${esc(m.id)}" ${m.id === "deepseek/deepseek-v4.1-flash" ? "selected" : ""}>${esc(m.name)} — ${esc(m.id)}</option>`).join("");
+  await loadUsage();
+  await loadChildLog();
+  await loadSettings();
+  await loadOfficial(false);
+  setInterval(loadStatus, 8000);
+  setInterval(loadChildLog, 4000);
+  startOfficialTimer();
+})();
+</script>
+</body>
+</html>
