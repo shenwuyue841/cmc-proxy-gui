@@ -114,6 +114,24 @@ if (PROXY_URL && PROXY_URL !== "none" && envProxy() !== PROXY_URL) {
 const GUI_PORT = parseInt(argVal("--port", String(GUI_CFG.port)), 10);
 const GUI_HOST = "127.0.0.1";
 
+// ---------------------------------------------------------------------------
+// --proxy-only：只跑反代，不起控制台、不开浏览器
+//   等价于原来 start.bat / start.sh 的作用，但复用上面那份代理逻辑，
+//   不必在两个平台的启动脚本里各维护一份（start.sh 原来就没设代理，是坏的）。
+// ---------------------------------------------------------------------------
+if (args.includes("--proxy-only")) {
+  if (!fs.existsSync(path.join(ROOT, "proxy.js"))) {
+    console.error("  ✗ 本目录里没有 proxy.js，无法只启动反代。");
+    process.exit(1);
+  }
+  console.log(`  仅启动反代（不出控制台）`);
+  console.log(`  出网代理: ${PROXY_URL || "未设置（直连）"}`);
+  console.log(`  反代端口: 见 config.json 的 port`);
+  console.log("");
+  const r = spawnSync(process.execPath, ["proxy.js"], { cwd: ROOT, stdio: "inherit" });
+  process.exit(r.status == null ? 0 : r.status);
+}
+
 /** 当前配置里的代理（给提示文案用） */
 function currentProxyLabel() {
   const p = (readGuiConfig().proxy || "").trim();

@@ -9,7 +9,7 @@
  *
  * 行为:
  *   1. 清空并重建输出目录 (默认 release/)
- *   2. 复制发布文件: proxy.js / config.example.json / start.bat / start.sh / README.md
+ *   2. 复制发布文件到 release/ 目录
  *   3. 生成 VERSION.txt: 版本、构建时间、git commit、各文件 SHA-256 校验和
  *
  * 注意: 不复制 config.json —— 它含私有 apiKey 且已被 gitignore。
@@ -26,7 +26,10 @@ const ROOT = __dirname;
 const PKG = "cmc-proxy";
 
 /** 发布到 release 的文件 (按此顺序写入清单) */
-const FILES = ["proxy.js", "config.example.json", "start.bat", "start.sh", "README.md"];
+const FILES = [
+  "proxy.js", "gui.js", "gui.html", "goat-prices.js",
+  "config.example.json", "start-gui.bat", "README.md", "LICENSE",
+];
 
 // ---------------------------------------------------------------------------
 // 参数解析

@@ -80,7 +80,8 @@ macOS / Linux   node gui.js --auto-start --open
 首次启动时若目录里没有 `config.json`，控制台会从 `config.example.json` 自动生成一份（`apiKey` 为空），
 **不需要手工复制文件**。
 
-> 仅需反代、不需要控制台时：Windows 使用 `start.bat`，macOS / Linux 使用 `./start.sh`。
+> 仅需反代、不需要控制台时：`node gui.js --proxy-only` —— 它同样会先按 `gui.config.json`
+> 配好出网代理，再启动 `proxy.js`，不会占用控制台端口。
 
 ### 第二步：在控制台里完成配置
 
@@ -119,12 +120,11 @@ cmc-proxy-gui/
 ├── gui.js                 # 控制台后端
 ├── gui.html               # 控制台前端（单文件，无外部依赖）
 ├── gui.config.json        # 控制台自身配置，首次运行自动生成
-├── start-gui.bat          # Windows：启动控制台与代理
-├── start.bat              # Windows：仅启动代理
-├── start.sh               # macOS / Linux：仅启动代理
+├── start-gui.bat          # Windows：启动控制台与代理（推荐入口）
 ├── build.js               # 导出 release 目录
 ├── schemas.md             # 数据结构与样例参考
 ├── goat-prices.schema.md  # 牌价文件字段定义
+├── LICENSE                # MIT
 └── docs/                  # 截图
 ```
 
