@@ -513,16 +513,67 @@ function jsonlFilesFor(days) {
   });
 }
 
-function aggregateUsage(days) {
-  const files = jsonlFilesFor(days);
-  const cutoff = Date.now() - days * 86400e3;
+// ---------------------------------------------------------------------------
+// 统计区间 → 「起点 + 分桶粒度」
+//   today  本地日历日（0 点起）→ 按小时
+//   24h    最近 24 个整点          → 按小时
+//   7/30   最近 N 天               → 按天
+// 注意：原来只有「滚动 N×24 小时」，标签却写「今天」，两者差了当天已过去的部分，
+//       和外部工具（按日历日统计）对不上，所以拆成两个明确的口径。
+// ---------------------------------------------------------------------------
+const pad2 = (n) => String(n).padStart(2, "0");
+
+function rangeSpec(range) {
+  const r = String(range == null ? "7" : range);
+  if (r === "today") {
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    return { gran: "hour", since: d.getTime(), days: 1, key: "today", label: "今天（0 点起）" };
+  }
+  if (r === "24h") {
+    const h = new Date(); h.setMinutes(0, 0, 0, 0);
+    return { gran: "hour", since: h.getTime() - 23 * 3600e3, days: 1, key: "24h", label: "最近 24 小时" };
+  }
+  const n = Math.min(90, Math.max(1, parseInt(r, 10) || 7));
+  return { gran: "day", since: Date.now() - n * 86400e3, days: n, key: String(n), label: `最近 ${n} 天` };
+}
+
+/** 本地时区的桶标签：小时桶 "14:00"，天桶 "10-07" */
+function bucketKeyOf(ts, gran) {
+  const d = new Date(ts);
+  return gran === "hour"
+    ? `${pad2(d.getHours())}:00`
+    : `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** 生成完整桶列表并补空桶 —— 柱子要连续，缺格会让人误读成"那段时间没数据" */
+function buildBuckets(spec, now) {
+  const out = [];
+  if (spec.gran === "hour") {
+    const end = new Date(now); end.setMinutes(0, 0, 0, 0);
+    for (let t = spec.since; t <= end.getTime(); t += 3600e3) {
+      out.push({ key: bucketKeyOf(t, "hour"), ts: t });
+    }
+  } else {
+    const d0 = new Date(now); d0.setHours(0, 0, 0, 0);
+    for (let i = spec.days - 1; i >= 0; i--) {
+      const t = d0.getTime() - i * 86400e3;
+      out.push({ key: bucketKeyOf(t, "day"), ts: t });
+    }
+  }
+  return out;
+}
+
+function aggregateUsage(range) {
+  const spec = rangeSpec(range);
+  const files = jsonlFilesFor(spec.days);
+  const cutoff = spec.since;
   const t = {
     requests: 0, ok: 0, fail: 0, cost: 0, credit: 0,
     in: 0, out: 0, rt: 0, cr: 0, cw: 0,
     msSum: 0, msCount: 0, ttfbSum: 0, ttfbCount: 0,
   };
   const byModel = new Map();
-  const byDay = new Map();
+  const byBucket = new Map();
   const recent = [];
 
   for (const file of files) {
@@ -555,11 +606,11 @@ function aggregateUsage(days) {
       if (!(status >= 200 && status < 300)) m.fail++;
       byModel.set(model, m);
 
-      const day = new Date(ts).toISOString().slice(0, 10);
-      const d = byDay.get(day) || { day, n: 0, cost: 0, credit: 0, in: 0, out: 0, cr: 0 };
+      const bk = bucketKeyOf(ts, spec.gran);
+      const d = byBucket.get(bk) || { n: 0, cost: 0, credit: 0, in: 0, out: 0, cr: 0, cw: 0 };
       d.n++; d.cost += cost; d.credit += credit;
-      if (u) { d.in += u.in || 0; d.out += u.out || 0; d.cr += u.cr || 0; }
-      byDay.set(day, d);
+      if (u) { d.in += u.in || 0; d.out += u.out || 0; d.cr += u.cr || 0; d.cw += u.cw || 0; }
+      byBucket.set(bk, d);
 
       recent.push({
         ts: r.ts, status, model,
@@ -575,8 +626,27 @@ function aggregateUsage(days) {
   recent.sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts));
   const totalIn = t.in + t.cr;
 
+  // 补空桶后返回：柱子连续，且长度 = 区间应有的桶数
+  const buckets = buildBuckets(spec, Date.now()).map((b) => {
+    const v = byBucket.get(b.key);
+    return {
+      label: b.key,
+      ts: b.ts,
+      n: v ? v.n : 0,
+      cost: v ? +v.cost.toFixed(6) : 0,
+      credit: v ? +v.credit.toFixed(6) : 0,
+      in: v ? v.in : 0,
+      out: v ? v.out : 0,
+      cr: v ? v.cr : 0,
+      cw: v ? v.cw : 0,
+    };
+  });
+
   return {
-    days,
+    range: spec.key,
+    rangeLabel: spec.label,
+    granularity: spec.gran,
+    days: spec.days,
     files: files.map((f) => path.basename(f)),
     totals: {
       ...t,
@@ -588,7 +658,7 @@ function aggregateUsage(days) {
       totalTokens: t.in + t.out + t.cr + t.cw,
     },
     byModel: [...byModel.values()].sort((a, b) => b.cost - a.cost),
-    byDay: [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day)),
+    buckets,
     recent: recent.slice(0, 200),
   };
 }
@@ -1089,14 +1159,15 @@ async function handleApi(req, res, url) {
   }
 
   if (p === "/api/usage" && req.method === "GET") {
-    const days = Math.min(90, Math.max(1, parseInt(url.searchParams.get("days") || "7", 10)));
+    // range: today | 24h | 7 | 30 ；days= 是旧参数，保留兼容
+    const range = url.searchParams.get("range") || url.searchParams.get("days") || "7";
     if (!resolveJsonlPath(cfg)) {
       return send(res, 200, {
         disabled: true,
         message: "config.json 里 jsonlLog 是关闭的，没有结构化日志可读。把它改成 true 并重启 cmc-proxy 即可开始记录。",
       });
     }
-    return send(res, 200, aggregateUsage(days));
+    return send(res, 200, aggregateUsage(range));
   }
 
   if (p === "/api/official" && req.method === "GET") {

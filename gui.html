@@ -66,7 +66,8 @@
   h2{font-size:16.5px;font-weight:600;margin:30px 0 12px;display:flex;align-items:center;gap:9px}
   h2:first-child{margin-top:6px}
   h2 .rule{flex:1;height:1px;background:var(--line)}
-  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  /* 5→6 张卡片后，最小列宽收到 174px，1440 视口下才能排成一行 */
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(174px,1fr))}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px}
   .card.flat{padding:0;overflow:hidden}
   .card h3{margin:0 0 8px;font-size:13px;font-weight:500;color:var(--tx2);letter-spacing:.3px}
@@ -227,8 +228,9 @@
       <section class="act" id="s-overview">
         <div class="row" style="margin-bottom:16px">
           <span class="muted">统计区间</span>
-          <select id="range" style="width:150px" onchange="loadUsage()">
-            <option value="1">今天</option>
+          <select id="range" style="width:170px" onchange="loadUsage()">
+            <option value="today">今天（0 点起）</option>
+            <option value="24h">最近 24 小时</option>
             <option value="7" selected>最近 7 天</option>
             <option value="30">最近 30 天</option>
           </select>
@@ -242,11 +244,13 @@
           <div class="card"><h3>请求数</h3><div class="big" id="m-req">—</div><div class="sub" id="m-reqsub">—</div></div>
           <div class="card"><h3>输入 token</h3><div class="big" id="m-in">—</div><div class="sub" id="m-insub">—</div></div>
           <div class="card"><h3>输出 token</h3><div class="big" id="m-out">—</div><div class="sub" id="m-outsub">—</div></div>
+          <div class="card" title="= 输入 + 输出 + 缓存读 + 缓存写，即流过的全部 token（含缓存命中）。与 CC Switch 的「真实消耗 Tokens」同口径，远大于实际计费量。">
+            <h3>真实消耗 token</h3><div class="big" id="m-total">—</div><div class="sub" id="m-totalsub">—</div></div>
           <div class="card"><h3>缓存命中率</h3><div class="big" id="m-cache">—</div><div class="sub" id="m-cachesub">—</div></div>
         </div>
 
-        <h2>按天费用 <span class="rule"></span></h2>
-        <div class="card"><div class="bars" id="dayBars"></div></div>
+        <h2><span id="chartTitle">按天费用</span> <span class="rule"></span><span class="muted" id="chartSub" style="font-size:13px;font-weight:400"></span></h2>
+        <div class="card"><div class="bars" id="bucketBars"></div></div>
 
         <h2>按模型 <span class="rule"></span></h2>
         <div class="card flat scroll">
@@ -620,12 +624,13 @@ async function loadStatus() {
 /* ---------- 概览 ---------- */
 async function loadUsage() {
   if (API_DEAD) return;
-  const d = await api("/api/usage?days=" + $("range").value);
+  const d = await api("/api/usage?range=" + encodeURIComponent($("range").value));
   if (d.error) return;
   if (d.disabled) {
     $("jsonlWarn").innerHTML = `<div class="note">${esc(d.message)}</div>`;
-    ["m-cost","m-req","m-in","m-out","m-cache"].forEach(i => $(i).textContent = "—");
-    $("byModel").innerHTML = ""; $("recent").innerHTML = ""; $("dayBars").innerHTML = "";
+    ["m-cost","m-req","m-in","m-out","m-total","m-cache"].forEach(i => $(i).textContent = "—");
+    $("byModel").innerHTML = ""; $("recent").innerHTML = ""; $("bucketBars").innerHTML = "";
+    $("chartSub").textContent = "";
     return;
   }
   $("jsonlWarn").innerHTML = "";
@@ -638,13 +643,40 @@ async function loadUsage() {
   $("m-insub").textContent = `缓存读 ${fmtTok(t.cr)}`;
   $("m-out").textContent = fmtTok(t.out);
   $("m-outsub").textContent = `推理 ${fmtTok(t.rt)}`;
+
+  // 第 6 张卡：真实消耗 token = 输入 + 输出 + 缓存读 + 缓存写
+  // 四项都在 totals 里，后端也已给出 totalTokens；这里只负责展示与说明
+  $("m-total").textContent = fmtTok(t.totalTokens);
+  $("m-totalsub").innerHTML = "输入 + 输出<br>缓存读 + 缓存写";
+  const totalCard = $("m-total").closest(".card");
+  if (totalCard) {
+    totalCard.title =
+      `输入 ${fmtNum(t.in)} + 输出 ${fmtNum(t.out)} + 缓存读 ${fmtNum(t.cr)} + 缓存写 ${fmtNum(t.cw)}`
+      + ` = ${fmtNum(t.totalTokens)}\n`
+      + "与 CC Switch 的「真实消耗 Tokens」同口径 —— 含缓存命中的全部 token，远大于实际计费量。";
+  }
+
   $("m-cache").textContent = t.cacheHit + "%";
   $("m-cachesub").textContent = t.avgTtfb ? `首字节均值 ${t.avgTtfb}ms` : "";
   $("filesInfo").textContent = d.files.length ? `${d.files.length} 个日志文件` : "无日志文件";
 
-  const max = Math.max(1, ...d.byDay.map((x) => x.cost));
-  $("dayBars").innerHTML = d.byDay.map((x) =>
-    `<div class="bar" style="height:${Math.max(3, (x.cost / max) * 100)}%" title="${x.day}  $${x.cost.toFixed(4)}  ${x.n} 次"><span>${x.day.slice(5)}</span></div>`
+  // 费用柱状图：粒度跟着区间走 —— 今天 / 24 小时 → 按小时，7 / 30 天 → 按天
+  const hourly = d.granularity === "hour";
+  $("chartTitle").textContent = hourly ? "按小时费用" : "按天费用";
+  const bs = d.buckets;
+  $("chartSub").textContent = bs.length
+    ? `${bs[0].label} – ${bs[bs.length - 1].label}（${bs.length} ${hourly ? "小时" : "天"}）`
+    : "";
+
+  // 柱子多了标签会挤到一起，按实际可用宽度决定隔几根标一次（标签约 34px 宽）
+  const barsW = $("bucketBars").clientWidth || 1100;
+  const n = d.buckets.length || 1;
+  const perBar = (barsW - 5 * (n - 1)) / n;
+  const step = Math.max(1, Math.ceil(34 / Math.max(1, perBar)));
+
+  const max = Math.max(1, ...d.buckets.map((x) => x.cost));
+  $("bucketBars").innerHTML = d.buckets.map((x, i) =>
+    `<div class="bar" style="height:${Math.max(3, (x.cost / max) * 100)}%" title="${esc(x.label)}  $${x.cost.toFixed(4)}  ${x.n} 次"><span>${i % step === 0 ? esc(x.label) : ""}</span></div>`
   ).join("") || `<span class="muted">无数据</span>`;
 
   $("byModel").innerHTML = d.byModel.map((m) => `<tr>
