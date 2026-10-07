@@ -146,7 +146,19 @@ try { process.title = `cmc 控制台 - ${GUI_HOST}:${GUI_PORT}`; } catch { /* �
 // ---------------------------------------------------------------------------
 
 function readConfig() {
-  return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+  } catch (e) {
+    // config.json 不存在、但模板还在 → 直接从模板生成一份空的，
+    // 这样用户可以「先启动控制台、再在设置页里填 Key」，不必手工复制文件。
+    const tmpl = path.join(ROOT, "config.example.json");
+    if (!fs.existsSync(CONFIG_PATH) && fs.existsSync(tmpl)) {
+      fs.copyFileSync(tmpl, CONFIG_PATH);
+      console.log("  已从 config.example.json 生成 config.json（apiKey 为空，请在「设置」页填写）");
+      return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+    }
+    throw e;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +231,82 @@ function loadPrices() {
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// 生成模型牌价（跑 goat-prices.js）
+//
+// 注意：牌价来源是 https://commandcode.ai/docs/plans/goat，**通常可以直连**；
+// 而上游 API（api.commandcode.ai）才是必须走代理的那个。
+// 所以这里**先按当前环境直连跑，失败且配了代理时再用代理重试一次** ——
+// 反过来（一上来就塞代理）会在代理没开或代理不通该站时，把一个本来能成的操作弄失败。
+// ---------------------------------------------------------------------------
+const GOAT_PRICES_JS = path.join(ROOT, "goat-prices.js");
+let pricesRunning = false;
+
+function spawnGoatPrices(env) {
+  return new Promise((resolve) => {
+    const c = spawn(process.execPath, ["goat-prices.js"], { cwd: ROOT, env, windowsHide: true });
+    let out = "", err = "";
+    const timer = setTimeout(() => { try { c.kill(); } catch { /* 忽略 */ } }, 120000);
+    const done = (r) => { clearTimeout(timer); resolve(r); };
+    c.stdout.on("data", (d) => { out += d; });
+    c.stderr.on("data", (d) => { err += d; });
+    c.on("error", (e) => done({ code: -1, out, err, spawnError: e.message }));
+    c.on("close", (code) => done({ code, out, err }));
+  });
+}
+
+function priceCount() {
+  try { return (JSON.parse(fs.readFileSync(PRICES_PATH, "utf8")).models || []).length; }
+  catch { return null; }
+}
+
+async function runGoatPrices() {
+  if (!fs.existsSync(GOAT_PRICES_JS)) {
+    return { ok: false, message: "本目录里没有 goat-prices.js —— 它应该和 proxy.js 在一起。" };
+  }
+  const pxy = (readGuiConfig().proxy || "").trim();
+
+  // 第一轮：显式剥掉代理变量再跑，才是真正的"直连"。
+  // （控制台进程自己是带代理环境变量的 —— 启动时注入的 —— 子进程会继承，不清掉就测不出直连）
+  const directEnv = { ...process.env };
+  for (const k of ["HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "NODE_USE_ENV_PROXY"]) {
+    delete directEnv[k];
+  }
+
+  let usedProxy = false;
+  let r = await spawnGoatPrices(directEnv);
+  let n = r.code === 0 ? priceCount() : null;
+
+  if ((r.code !== 0 || n == null) && pxy && pxy !== "none") {
+    usedProxy = true;
+    r = await spawnGoatPrices({
+      ...process.env,
+      NODE_USE_ENV_PROXY: "1",
+      HTTPS_PROXY: pxy,
+      HTTP_PROXY: pxy,
+      NO_PROXY: process.env.NO_PROXY || "localhost,127.0.0.1,::1",
+    });
+    n = r.code === 0 ? priceCount() : null;
+  }
+
+  if (r.code === 0 && n != null) {
+    return {
+      ok: true,
+      models: n,
+      message: `已生成 goat-prices.json，共 ${n} 个模型。` + (usedProxy ? `（直连失败，已改用代理 ${pxy}）` : ""),
+    };
+  }
+
+  const tail = (r.err || r.out).trim().split(/\r?\n/).filter(Boolean).slice(-3).join(" ／ ");
+  let msg = `生成失败（退出码 ${r.code}）。${tail ? "脚本输出：" + tail : "脚本没有任何输出。"}`;
+  if (!pxy) {
+    msg += "　牌价来源通常可以直连；若你这边不通，请先在上面填「出网代理」。";
+  } else {
+    msg += `　直连和代理（${pxy}）都试过了。请确认代理在运行、且能访问 commandcode.ai。`;
+  }
+  return { ok: false, message: msg };
 }
 
 // ---------------------------------------------------------------------------
@@ -816,9 +904,12 @@ async function handleApi(req, res, url) {
   try {
     cfg = readConfig();
   } catch (e) {
+    const tmpl = fs.existsSync(path.join(ROOT, "config.example.json"));
     return send(res, 500, {
-      error: "读不到 config.json。本控制台需要和 cmc-proxy 放在同一个目录"
-        + "（要先读它的 config.json 才知道代理端口和 apiKey）。",
+      error: tmpl
+        ? `config.json 解析失败：${e.message}`
+        : "读不到 config.json，也找不到 config.example.json。"
+          + "本控制台需要和 proxy.js / config.example.json 放在同一个目录。",
     });
   }
   const proxyPort = cfg.port || 5411;
@@ -895,6 +986,17 @@ async function handleApi(req, res, url) {
         ? `已保存。${restartNeeded.join("、")}需要重启控制台才生效。`
         : "已保存。",
     });
+  }
+
+  // ---------- 生成模型牌价 ----------
+  if (p === "/api/prices/refresh" && req.method === "POST") {
+    if (pricesRunning) return send(res, 200, { ok: false, message: "正在生成中，请稍候…" });
+    pricesRunning = true;
+    try {
+      return send(res, 200, await runGoatPrices());
+    } finally {
+      pricesRunning = false;
+    }
   }
 
   // ---------- 连接测试 ----------

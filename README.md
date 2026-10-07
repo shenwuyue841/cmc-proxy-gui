@@ -66,43 +66,46 @@ Command Code 的 Provider API 按模型族划分三套端点：
 ### 环境要求
 
 - Node.js ≥ 18（依赖内置 `fetch` 与 `ReadableStream`）
-- Windows 可直接使用启动脚本；macOS / Linux 可使用命令行方式启动
+- Windows 可直接使用启动脚本；macOS / Linux 可使用命令行方式启动，界面本身跨平台
 
-### 步骤
-
-**1. 创建配置文件**
-
-复制 `config.example.json` 为 `config.json`，填写 `apiKey`：
-
-```json
-{
-  "upstream": "https://api.commandcode.ai/provider",
-  "apiKey": "user_你的密钥"
-}
-```
-
-密钥可在 Command Code 账户页面获取，形如 `user_` 开头。
-
-**2. 生成模型牌价**
-
-```bash
-node goat-prices.js
-```
-
-该步骤生成 `goat-prices.json`，费用统计与费用试算依赖此文件。未执行时控制台仍可正常运行，但费用相关字段为空。
-
-> 若本机需经由代理访问外网，执行前设置 `HTTP_PROXY` 与 `HTTPS_PROXY`，并加上 `NODE_USE_ENV_PROXY=1`（Node 的 `fetch` 默认不读取前两个变量）。控制台自身会处理这一点，此处是因为脚本在控制台之外单独执行。
-
-**3. 启动**
+### 第一步：启动
 
 ```
 Windows         双击 start-gui.bat
 macOS / Linux   node gui.js --auto-start --open
 ```
 
-启动后自动打开浏览器并访问 `http://127.0.0.1:5419`。控制台与代理运行在同一进程组内，关闭该窗口即同时停止两者。
+浏览器会自动打开 `http://127.0.0.1:5419`。控制台与代理运行在同一进程组内，关闭该窗口即同时停止两者。
+
+首次启动时若目录里没有 `config.json`，控制台会从 `config.example.json` 自动生成一份（`apiKey` 为空），
+**不需要手工复制文件**。
 
 > 仅需反代、不需要控制台时：Windows 使用 `start.bat`，macOS / Linux 使用 `./start.sh`。
+
+### 第二步：在控制台里完成配置
+
+打开左侧「**设置**」页，三项配置都在同一页面完成，无需编辑任何文件：
+
+| 顺序 | 位置 | 操作 | 如何确认成功 |
+|---|---|---|---|
+| ① | 上游连接 → **API Key** | 填入 Command Code 的密钥（`user_` 开头） | 点「测试连接」→ 显示 *Key 有效 · 上游返回 N 个模型* |
+| ② | 官方额度 → **出网代理** | 直连不通时填本地代理，v2rayN 默认为 `http://127.0.0.1:10809` | 点「测试」→ 显示 *官方接口通 · 账号 xxx* |
+| ③ | 模型牌价 → **立即生成** | 点一下按钮，无需命令行 | 状态由「缺失」变为「已就绪」 |
+
+![设置页](docs/console-settings.png)
+
+- **① 为必需项**；② 与 ③ 可选 —— ② 只影响「官方额度」页，③ 只影响费用统计与「费用试算」
+- ③ 拉取的是公开价格页面，**不需要 API Key**，也不需要 `goat-prices.json` 事先存在
+- 修改端口或出网代理后需重启控制台。原因是 Node 在进程启动时即确定是否启用环境变量代理，
+  启动后再设置无效（控制台会自动携带新代理重启一次自身）
+
+> 更习惯命令行的话，也可以直接编辑 `config.json` 填入 `apiKey`、并在目录下执行 `node goat-prices.js`，
+> 效果与上表完全一致。文件层面的说明见下方「配置文件」。
+
+### 第三步：接入客户端
+
+Claude Desktop 的配置见「[接入 Claude Desktop](#接入-claude-desktop)」一节；
+Claude Code 与 Codex 使用同一个网关地址 `http://127.0.0.1:5411`，配置方式参见上游项目文档。
 
 ---
 
@@ -127,40 +130,39 @@ cmc-proxy-gui/
 
 ---
 
-## 配置
+## 配置文件
 
-日常配置无需编辑文件，均可在控制台的「设置」页完成：
+日常使用不需要接触文件 —— 全部配置都在控制台的「设置」页完成（见上文「快速开始」）。
+以下是文件层面的说明，便于手工部署或二次开发。
 
-![设置页](docs/console-settings.png)
-
-| 分组 | 配置项 |
-|---|---|
-| 上游连接 | Base URL、API Key（提供连通性测试） |
-| 官方额度 | 启用开关、出网代理（提供连通性测试） |
-| 控制台 | 控制台端口、代理端口、侧边栏标题 |
-
-两个测试按钮分别请求 `{upstream}/v1/models` 与 `/alpha/whoami`，便于区分上游与网络问题。
-
-控制台自身的配置项存储于 `gui.config.json`，首次运行自动生成：
+**控制台自身的配置**：`gui.config.json`，首次运行自动生成，共 4 项。
 
 ```json
 {
-  "port": 5419,
-  "proxy": "",
-  "officialApi": true,
-  "title": "cmc 控制台"
+  "port": 5419,           // 控制台监听端口
+  "proxy": "",            // 出网代理，例：http://127.0.0.1:10809；留空 = 直连
+  "officialApi": true,    // 是否启用「官方额度」查询
+  "title": "cmc 控制台"    // 侧边栏标题
 }
 ```
 
-其中 `proxy` 为访问官方接口所需的出网代理，留空表示直连。
+`proxy` 之所以必须由进程启动时确定：Node 在进程引导阶段就决定是否启用环境变量代理
+（`NODE_USE_ENV_PROXY` / `HTTPS_PROXY`），启动之后再设置无效。因此控制台若发现配置中的代理
+尚未进入环境变量，会**携带该代理重新执行自身一次**，从而保证从任何入口启动都能正确出网。
 
-Node 在进程启动时即决定是否启用环境变量代理（`NODE_USE_ENV_PROXY` / `HTTPS_PROXY`），
-启动之后再设置无效。因此控制台在启动阶段会比对 `gui.config.json` 中的代理与当前环境，
-若不一致则**携带该代理重新执行自身一次**，从而保证无论从哪个入口启动都能正确出网。
+**上游配置**：`config.json`，由反代核心 `proxy.js` 读取，含 `port`、`host`、`upstream`、
+`apiKey`、`modelMap`、`defaultModels` 等。控制台的「原始配置」页就是它的编辑器；
+`apiKey` 在该页面始终以掩码 `user_****末4位` 显示，明文不会下发到浏览器。
 
-上游的 `port`、`upstream`、`apiKey`、`modelMap` 等配置仍位于 `config.json`，控制台仅代为修改。
+**模型牌价**：`goat-prices.json`，由 `goat-prices.js` 生成，是费用统计与「费用试算」的价格来源。
+可在控制台里一键生成，或手动执行：
 
-> 修改端口或出网代理后需重启控制台方可生效。若未重启就点击测试，界面会明确提示这一点，而不会反复失败。
+```bash
+node goat-prices.js
+```
+
+> 该脚本在控制台之外运行，不会自动继承控制台的代理设置。若本机需经代理访问外网，
+> 执行前设置 `HTTP_PROXY` 与 `HTTPS_PROXY`，并加上 `NODE_USE_ENV_PROXY=1`。
 
 ---
 

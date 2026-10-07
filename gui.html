@@ -469,6 +469,20 @@
           <div id="testOffMsg" style="margin-top:10px"></div>
         </div>
 
+        <h2>模型牌价 <span class="rule"></span></h2>
+        <div class="card">
+          <div class="row" style="justify-content:space-between;align-items:center">
+            <span id="priceState" class="muted">—</span>
+            <button class="g" onclick="genPrices()" id="btnPrices">立即生成</button>
+          </div>
+          <div class="note" style="margin-top:14px">
+            <code>goat-prices.json</code> 是「概览」费用列与「费用试算」的价格来源，
+            由 <code>goat-prices.js</code> 从官方页面拉取。它<b>不需要 API Key</b>，但需要能出网。
+            <br />没有这个文件时控制台照常工作，只是算不出金额 —— 点上面的按钮即可生成，不必开命令行。
+          </div>
+          <div id="priceMsg" style="margin-top:10px"></div>
+        </div>
+
         <h2>控制台 <span class="rule"></span></h2>
         <div class="card">
           <div class="kv">
@@ -583,6 +597,14 @@ async function loadStatus() {
   $("btnStart").disabled = on || STATUS.managedByGui;
   $("btnStop").disabled = !STATUS.managedByGui;
   $("btnForce").disabled = !on;
+
+  // 设置页里的牌价状态（元素可能还没渲染，判空）
+  const ps = $("priceState");
+  if (ps) {
+    ps.innerHTML = STATUS.pricesLoaded
+      ? `<span class="pill ok">已就绪</span><span class="muted" style="margin-left:8px">goat-prices.json</span>`
+      : `<span class="pill err">缺失</span><span class="muted" style="margin-left:8px">尚未生成 —— 费用统计与试算不可用</span>`;
+  }
 
   // 独立仓库场景：目录里没有 proxy.js 时，明确告诉用户缺什么
   if (STATUS.proxyJsPresent === false) {
@@ -962,9 +984,14 @@ function renderCalcModels() {
 
   $("calcWarn").innerHTML = `<div class="note err" style="margin-bottom:16px">
     <b>找不到 goat-prices.json，费用试算拿不到价格。</b>
-    在控制台所在目录执行一次 <code>node goat-prices.js</code> 生成它（若需代理，见 README），
-    然后<b>刷新本页</b>即可 —— 不必重启控制台。
-    <br />下面的模型列表暂时取自上游目录，可以选，但估不出金额。</div>`;
+    它由 <code>goat-prices.js</code> 从官方页面拉取（不需要 API Key，但需要能出网）。
+    <br />下面的模型列表暂时取自上游目录，可以选，但估不出金额。
+    <div class="row" style="margin-top:12px">
+      <button class="g" onclick="genPrices('calcMsg')">立即生成牌价</button>
+      <span class="muted" style="font-size:12.5px">或在「设置」页操作；生成后本页会自动刷新</span>
+    </div>
+    <div id="calcMsg" style="margin-top:10px"></div>
+  </div>`;
 }
 
 /** 重新拉一次模型目录再渲染 —— 用户可能是刚生成 goat-prices.json 才切过来 */
@@ -1108,6 +1135,21 @@ async function exportSanitized() {
     $("rawHint").textContent = "";
     window.prompt("复制下面这份（apiKey 已清空）：", txt);
   }
+}
+
+/** 让控制台代跑 goat-prices.js 生成牌价（省得用户开命令行） */
+async function genPrices(msgId) {
+  msgId = msgId || "priceMsg";
+  const btn = $("btnPrices");
+  if (btn) btn.disabled = true;
+  $(msgId).innerHTML = `<span class="muted">正在拉取官方牌价…（约 10–30 秒，请勿关闭窗口）</span>`;
+  const r = await api("/api/prices/refresh", { method: "POST" });
+  if (btn) btn.disabled = false;
+  if (r.error) { testMsg(msgId, r); return; }
+  if (!r.ok) { testMsg(msgId, r); return; }
+  $(msgId).innerHTML = `<span class="pill ok">成功</span><span class="muted" style="margin-left:8px">${esc(r.message)}</span>`;
+  await refreshCalcModels();   // 让「费用试算」的下拉立刻带上价格
+  await loadStatus();          // 刷新设置页里的牌价状态
 }
 
 /* ---------- 原始配置 ---------- */
